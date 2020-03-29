@@ -96,6 +96,8 @@ std::list<std::pair<size_t, MatFuture*>> waiting_list;
 
 std::mutex list_mutex;
 
+bool stop_spinning = false;
+
 std::unique_ptr<MatFuture> xs_man_batch (
   char * t,
   char * q,
@@ -119,25 +121,20 @@ std::unique_ptr<MatFuture> xs_man_batch (
   return std::move(future);
 }
 
-void dummy_func() {
-  auto xs_man_custom = [&] (char * t,
-                     char * q,
-                     uint32_t tlen,
-                     uint32_t qlen,
-                     signed char mis_or_ind,
-                     MatFuture* future
-                    ) {
-    uint64_t num_GPU_mem_bytes = 3 * (tlen + 1) * sizeof(int);
-    num_GPU_mem_bytes += (tlen + 1) * (qlen + 1) * sizeof(int);
-    num_GPU_mem_bytes += tlen * sizeof(char);
-    num_GPU_mem_bytes += qlen * sizeof(char);
+void spinning_func_t() {
+
+  auto kernel_launch_t = [&](MatFuture* future) {
+    uint64_t num_GPU_mem_bytes = 3 * (future->tlen + 1) * sizeof(int);
+    num_GPU_mem_bytes += (future->tlen + 1) * (future->qlen + 1) * sizeof(int);
+    num_GPU_mem_bytes += future->tlen * sizeof(char);
+    num_GPU_mem_bytes += future->qlen * sizeof(char);
     // Malloc memory for our program.
     void * GPU_mem = NULL;
     cuda_error_check( cudaMalloc((void **) & GPU_mem, num_GPU_mem_bytes) );
     // Create a stream.
     cudaStream_t stream;
     cudaStreamCreate(&stream);
-    future->mat = xs_t_geq_q_man(t, q, tlen, qlen, mis_or_ind, GPU_mem, &stream);
+    future->mat = xs_t_geq_q_man(future->t, future->q, future->tlen, future->qlen, future->mis_or_ind, GPU_mem, &stream);
     cudaStreamSynchronize(stream);
     cudaFree(GPU_mem);
     future->ready = true;
@@ -149,9 +146,40 @@ void dummy_func() {
     //       << mat[(tlen+1) * i + j] << " ";
     //   std::cout << std::endl;
     // }
-  
-    return future->mat;
   };
+
+  while( !stop_spinning ) {
+    if( waiting_list.empty() ) continue;
+
+    auto launch_meta = waiting_list.front();
+    const size_t num_GPU_mem_bytes = launch_meta.first;
+
+    size_t free = 0, total = 0;
+    while (free < num_GPU_mem_bytes) {
+      cudaError_t err = cudaMemGetInfo(&free, &total);
+      cuda_error_check(err);
+    }
+
+    // NOTE: Assuming that no other process is requesting memory concurrently.
+    std::thread t(kernel_launch_t, launch_meta.second);
+    t.detach();
+
+    {
+      std::lock_guard<std::mutex> guard(list_mutex);
+      waiting_list.pop_front();
+    }
+  }
+
+  assert( waiting_list.empty() );
+}
+
+void start_queing_thread() {
+  std::thread t(spinning_func_t);
+  t.detach();
+}
+
+void stop_queing_thread() {
+  stop_spinning = true;
 }
 
 #endif
