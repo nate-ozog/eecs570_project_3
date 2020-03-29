@@ -44,8 +44,10 @@ int * xs_man(
   return mat;
 }
 
-/* threading API starts here */
+/* kernel-launch queueing API starts here */
 
+/* Encapsulate all metadata for the kernel launch and provide methods to check 
+   for when the result is ready.*/
 struct MatFuture {
   // Arguments
   char * t;
@@ -56,9 +58,15 @@ struct MatFuture {
   
   // Results
   int* mat;
-  bool ready;
+  // TODO: check if conditional_variable works here
+  volatile bool ready;
 
-  MatFuture(char* _t, char* _q, uint32_t _tlen, uint32_t _qlen, signed char _mis_or_ind) {
+  MatFuture(
+            char* _t,
+            char* _q,
+            uint32_t _tlen,
+            uint32_t _qlen,
+            signed char _mis_or_ind) {
     assert(_t != nullptr);
     assert(_q != nullptr);
     assert(_tlen != 0);
@@ -75,9 +83,16 @@ struct MatFuture {
   }
 
   bool is_ready() { return ready; }
+
+  void wait_till_ready() {
+    while( !is_ready() ) {
+      std::this_thread::yield();
+    }
+  }
 };
 
 
+/* Place a kernel launch request and receive a future to refer to the result.*/
 std::unique_ptr<MatFuture> xs_man_batch (
   char * t,
   char * q,
@@ -91,12 +106,15 @@ void stop_queing_thread();
 
 /* API stops here */
 
-// NOTE: This could be a heap over the memory request as well, but this is fine for now
+/* NOTE: This could be a heap over the memory request as well,
+         but this should be fine for now. The heap implementation
+         might suffer from starving requests
+         with a large mem requirement*/
 std::list<std::pair<size_t, MatFuture*>> waiting_list;
-
 std::mutex list_mutex;
 
-bool stop_spinning = false;
+// A clean way to exit the queuing thread
+volatile bool stop_spinning = false;
 
 std::unique_ptr<MatFuture> xs_man_batch (
   char * t,
@@ -121,8 +139,10 @@ std::unique_ptr<MatFuture> xs_man_batch (
   return std::move(future);
 }
 
+// Function for thread to spin-wait for kernel launch requests.
 void spinning_func_t() {
 
+  // Lambda to launch a kernel and signal result readiness.
   auto kernel_launch_t = [&](MatFuture* future) {
     uint64_t num_GPU_mem_bytes = 3 * (future->tlen + 1) * sizeof(int);
     num_GPU_mem_bytes += (future->tlen + 1) * (future->qlen + 1) * sizeof(int);
@@ -149,13 +169,17 @@ void spinning_func_t() {
   };
 
   while( !stop_spinning ) {
-    if( waiting_list.empty() ) continue;
+    if( waiting_list.empty() ) {
+      std::this_thread::yield();      
+      continue;
+    }
 
     auto launch_meta = waiting_list.front();
     const size_t num_GPU_mem_bytes = launch_meta.first;
 
     size_t free = 0, total = 0;
     while (free < num_GPU_mem_bytes) {
+      std::this_thread::yield();
       cudaError_t err = cudaMemGetInfo(&free, &total);
       cuda_error_check(err);
     }
@@ -170,6 +194,7 @@ void spinning_func_t() {
     }
   }
 
+  // Sanity check: the list must be empty if the thread has been signalled to stop.
   assert( waiting_list.empty() );
 }
 
