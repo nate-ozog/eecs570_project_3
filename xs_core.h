@@ -4,6 +4,10 @@
 #include "nw_general.h"
 #include "cuda_error_check.h"
 
+// Global mutex variable for inter-block synchronization
+__volatile__ __device__ int g_mutex = 0;
+__volatile__ __device__ bool g_sense = true;
+
 __global__ void xs_core_init(
   uint32_t tlen,
   uint32_t qlen,
@@ -12,6 +16,8 @@ __global__ void xs_core_init(
   int * xf_mat_row1,
   uint8_t * mat
 ) {
+  // Reset global mutex for new kernel.
+  g_sense = true;
   // Get the global thread index.
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
   // Initialize top row of backtrack matrix
@@ -31,61 +37,137 @@ __global__ void xs_core_init(
   }
 }
 
+
+/* __device__ void __syncblocks(int nblocks) */
+/* { */
+/* 	if (threadIdx.x == 0) { */
+/* 		atomicAdd((int*)&g_mutex, 1); */
+/* 		while (g_mutex != nblocks) printf("%d\n", g_mutex); */
+/* 	} */
+/* 	__syncthreads(); */
+/* } */
+
 __global__ void xs_core_comp(
-  // Kernel management variables.
-  bool wr_q_border_elt, // Do we need to write a border element for query?
-  bool wr_t_border_elt, // Do we need to write a border element for target?
-  uint32_t comp_w,      // Number of matrix elements we are computing.
-  uint32_t comp_x_off,  // What is our x-dimension offset for our compute region?
-  uint32_t comp_y_off,  // What is our y-dimension offset for our compute region?
-  // Variables regarding matrix computations.
   char * t,
   char * q,
   uint32_t tlen,
   uint32_t qlen,
-  signed char mis_or_ind,
   int * xf_mat_row0,
   int * xf_mat_row1,
   int * xf_mat_row2,
-  uint8_t * mat
+  signed char mis_or_ind,
+  uint8_t * mat,
+  uint32_t nblocks
 ) {
+  /* START PULLED UP FROM KERNEL */
   // Get the global and local thread index.
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
   uint32_t l_tx = threadIdx.x;
+  int * xf_mat_row_temp = NULL;
   extern __shared__ int smem[];
   int * s_row_up = smem;
-  // If we need to write a border element for our query.
-  if (g_tx == 0 && wr_q_border_elt)
-    xf_mat_row2[0] = (comp_y_off) * mis_or_ind;
-  // If we need to write a border element for our target.
-  if (g_tx == 0 && wr_t_border_elt)
-    xf_mat_row2[comp_x_off + comp_w] = (comp_y_off) * mis_or_ind;
-  // If we are in the compute region.
-  if (g_tx >= comp_x_off && g_tx < comp_x_off + comp_w) {
-    // Fetch into shared memory.
-    if (l_tx == 0 || g_tx == comp_x_off)
-      s_row_up[l_tx] = xf_mat_row1[g_tx - 1];
-    s_row_up[l_tx + 1] = xf_mat_row1[g_tx];
-    __syncthreads();
-    // Do the NW cell calculation.
-    int match = xf_mat_row0[g_tx - 1]
-      + cuda_nw_get_sim(q[comp_y_off - g_tx - 1], t[g_tx - 1]);
-    int ins = s_row_up[l_tx + 1] + mis_or_ind;
-    int del = s_row_up[l_tx] + mis_or_ind;
-    // Write back to our current sliding window row index, set pointer.
-	int mat_idx = g_tx + (comp_y_off-g_tx)*(tlen+1);
-	if (match >= ins && match >= del) {
-		xf_mat_row2[g_tx] = match;
-		mat[mat_idx] = MATCH;
+  bool my_sense = false;
+  /* END PULLED UP FROM KERNEL */
+  if (!g_tx) printf("nblocks: %d\n", nblocks);
+
+  // Kernel management variables, see kernel definiton
+  // for comments on what these are used for.
+  bool wr_q_border_elt = true;
+  bool wr_t_border_elt = true;
+  uint32_t comp_w = 0;
+  uint32_t comp_x_off = 1;
+
+  // Other variables to help manage the kernel manager variables...
+  bool square_matrix = (qlen == tlen);
+  uint32_t max_comp_w_cnt = 0;
+  int8_t comp_w_increment = 1;
+  uint32_t max_comp_w = qlen < tlen ? qlen : tlen;
+  uint32_t largest_dim = tlen > qlen ? tlen : qlen;
+  uint32_t smallest_dim = tlen < qlen ? tlen : qlen;
+  uint32_t max_comp_w_cnt_max = largest_dim - smallest_dim + 1;
+
+  // Loop through every wavefront/diagonal.
+  for (uint32_t comp_y_off = 2; comp_y_off < qlen + tlen + 1; ++comp_y_off) {
+    // Update kernel management variables.
+    wr_q_border_elt = (comp_y_off < qlen + 1);
+    wr_t_border_elt = (comp_y_off < tlen + 1);
+    comp_w += comp_w_increment;
+    comp_x_off += (comp_y_off > qlen + 1);
+
+	/* START ORIGINAL KERNEL */
+	  // If we need to write a border element for our query.
+	  if (g_tx == 0 && wr_q_border_elt)
+		xf_mat_row2[0] = (comp_y_off) * mis_or_ind;
+	  // If we need to write a border element for our target.
+	  if (g_tx == 0 && wr_t_border_elt)
+		xf_mat_row2[comp_x_off + comp_w] = (comp_y_off) * mis_or_ind;
+	  // If we are in the compute region.
+	  if (g_tx >= comp_x_off && g_tx < comp_x_off + comp_w) {
+		// Fetch into shared memory.
+		if (l_tx == 0 || g_tx == comp_x_off)
+		  s_row_up[l_tx] = xf_mat_row1[g_tx - 1];
+		s_row_up[l_tx + 1] = xf_mat_row1[g_tx];
+		__syncthreads();
+		// Do the NW cell calculation.
+		int match = xf_mat_row0[g_tx - 1]
+		  + cuda_nw_get_sim(q[comp_y_off - g_tx - 1], t[g_tx - 1]);
+		int ins = s_row_up[l_tx + 1] + mis_or_ind;
+		int del = s_row_up[l_tx] + mis_or_ind;
+		// Write back to our current sliding window row index, set pointer.
+		int mat_idx = g_tx + (comp_y_off-g_tx)*(tlen+1);
+		if (match >= ins && match >= del) {
+			xf_mat_row2[g_tx] = match;
+			mat[mat_idx] = MATCH;
+		}
+		else if (ins >= match && ins >= del) {
+			xf_mat_row2[g_tx] = ins;
+			mat[mat_idx] = INS;
+		}
+		else {
+			xf_mat_row2[g_tx] = del;
+			mat[mat_idx] = DEL;
+		}
+	  }
+	/* END ORIGINAL KERNEL */
+
+    // Update other management variables.
+    max_comp_w_cnt = comp_w == max_comp_w ?
+      max_comp_w_cnt += 1 : max_comp_w_cnt;
+    if (square_matrix)
+      comp_w_increment = max_comp_w_cnt == 1 ? -1 : 1;
+    else
+      comp_w_increment = max_comp_w_cnt == 0 ? 1 :
+        max_comp_w_cnt == max_comp_w_cnt_max ? -1 : 0;
+
+    // Slide our window in our compute matrix.
+    xf_mat_row_temp = xf_mat_row0;
+    xf_mat_row0 = xf_mat_row1;
+    xf_mat_row1 = xf_mat_row2;
+    xf_mat_row2 = xf_mat_row_temp;
+
+	// Ensure all threads within block have finished computation.
+	__syncthreads();
+
+	// Synchronize across blocks, using just the leading threads.
+	if (threadIdx.x == 0) {
+		// Increment counter once per block.
+		int barrier_blocks = atomicAdd((int*)&g_mutex, 1) + 1;
+		if( barrier_blocks == nblocks ) {
+			printf("block: %d my_sense: %d g_sense %d\n", barrier_blocks, int(my_sense), int(g_sense));
+			g_mutex = 0;
+			g_sense = !g_sense;
+			printf("all blocks reached barrier!\n");
+		} else {
+			printf("block: %d my_sense: %d g_sense %d\n", barrier_blocks, int(my_sense), int(g_sense));
+			while (g_sense != my_sense);
+		}
+		my_sense = !my_sense;
 	}
-	else if (ins >= match && ins >= del) {
-		xf_mat_row2[g_tx] = ins;
-		mat[mat_idx] = INS;
-	}
-	else {
-		xf_mat_row2[g_tx] = del;
-		mat[mat_idx] = DEL;
-	}
+
+	__syncthreads();
+	
+	/* __syncblocks(nblocks); */
+
   }
 }
 
@@ -102,7 +184,6 @@ uint8_t * xs_t_geq_q_man(
   // Maintain a sliding window of 3 rows of our transformed matrix.
   // This is useful because with the transformation matrix we get
   // complete memory coalescing on both reads and writes.
-  int * xf_mat_row_temp = NULL;
   int * xf_mat_row0_d = (int *) mem;
   int * xf_mat_row1_d = xf_mat_row0_d + (tlen + 1);
   int * xf_mat_row2_d = xf_mat_row1_d + (tlen + 1);
@@ -129,52 +210,15 @@ uint8_t * xs_t_geq_q_man(
 
   // Run our matrix scoring algorithm.
   uint32_t comp_num_threads = (tlen + 1);
-  dim3 comp_g_dim(ceil(comp_num_threads / ((float) 1024)));
-  dim3 comp_b_dim(1024);
-  // Kernel management variables, see kernel definiton
-  // for comments on what these are used for.
-  bool wr_q_border_elt = true;
-  bool wr_t_border_elt = true;
-  uint32_t comp_w = 0;
-  uint32_t comp_x_off = 1;
-  // Other variables to help manage the kernel manager variables...
-  bool square_matrix = (qlen == tlen);
-  uint32_t max_comp_w_cnt = 0;
-  int8_t comp_w_increment = 1;
-  uint32_t max_comp_w = qlen < tlen ? qlen : tlen;
-  uint32_t largest_dim = tlen > qlen ? tlen : qlen;
-  uint32_t smallest_dim = tlen < qlen ? tlen : qlen;
-  uint32_t max_comp_w_cnt_max = largest_dim - smallest_dim + 1;
-  // Loop through every wavefront/diagonal.
-  for (uint32_t comp_y_off = 2; comp_y_off < qlen + tlen + 1; ++comp_y_off) {
-    // Update kernel management variables.
-    wr_q_border_elt = (comp_y_off < qlen + 1);
-    wr_t_border_elt = (comp_y_off < tlen + 1);
-    comp_w += comp_w_increment;
-    comp_x_off += (comp_y_off > qlen + 1);
+  float threads_per_block = 1024;
+  uint32_t nblocks = ceil(comp_num_threads / threads_per_block);
+  dim3 comp_g_dim(nblocks);
+  dim3 comp_b_dim(threads_per_block);
 
-    // Launch our kernel.
-    xs_core_comp <<<comp_g_dim, comp_b_dim, 1025 * sizeof(int), *stream>>>
-      (wr_q_border_elt, wr_t_border_elt, comp_w,
-        comp_x_off, comp_y_off, t_d, q_d,
-          tlen, qlen, mis_or_ind, xf_mat_row0_d,
-            xf_mat_row1_d, xf_mat_row2_d, mat_d);
-
-    // Update other management variables.
-    max_comp_w_cnt = comp_w == max_comp_w ?
-      max_comp_w_cnt += 1 : max_comp_w_cnt;
-    if (square_matrix)
-      comp_w_increment = max_comp_w_cnt == 1 ? -1 : 1;
-    else
-      comp_w_increment = max_comp_w_cnt == 0 ? 1 :
-        max_comp_w_cnt == max_comp_w_cnt_max ? -1 : 0;
-
-    // Slide our window in our compute matrix.
-    xf_mat_row_temp = xf_mat_row0_d;
-    xf_mat_row0_d = xf_mat_row1_d;
-    xf_mat_row1_d = xf_mat_row2_d;
-    xf_mat_row2_d = xf_mat_row_temp;
-  }
+  // Launch our kernel.
+  xs_core_comp <<<comp_g_dim, comp_b_dim, (threads_per_block+1) * sizeof(int), *stream>>>
+    ( t_d, q_d, tlen, qlen, xf_mat_row0_d, xf_mat_row1_d, xf_mat_row2_d, 
+	  mis_or_ind, mat_d, nblocks);
 
   // Allocate pinned memory on the host for faster data transfer.
   uint8_t* mat;
