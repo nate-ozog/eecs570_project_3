@@ -4,9 +4,9 @@
 #include "nw_general.h"
 #include "cuda_error_check.h"
 
-// Global mutex variable for inter-block synchronization
-__volatile__ __device__ int g_mutex = 0;
-__volatile__ __device__ bool g_sense = true;
+#include <cooperative_groups.h>
+using namespace cooperative_groups;
+
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -16,8 +16,6 @@ __global__ void xs_core_init(
   int * xf_mat_row1,
   uint8_t * mat
 ) {
-  // Reset global mutex for new kernel.
-  g_sense = true;
   // Get the global thread index.
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
   // Initialize top row of backtrack matrix
@@ -38,15 +36,6 @@ __global__ void xs_core_init(
 }
 
 
-/* __device__ void __syncblocks(int nblocks) */
-/* { */
-/* 	if (threadIdx.x == 0) { */
-/* 		atomicAdd((int*)&g_mutex, 1); */
-/* 		while (g_mutex != nblocks) printf("%d\n", g_mutex); */
-/* 	} */
-/* 	__syncthreads(); */
-/* } */
-
 __global__ void xs_core_comp(
   char * t,
   char * q,
@@ -63,12 +52,10 @@ __global__ void xs_core_comp(
   // Get the global and local thread index.
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
   uint32_t l_tx = threadIdx.x;
+  grid_group grid = this_grid();
   int * xf_mat_row_temp = NULL;
   extern __shared__ int smem[];
   int * s_row_up = smem;
-  bool my_sense = false;
-  /* END PULLED UP FROM KERNEL */
-  if (!g_tx) printf("nblocks: %d\n", nblocks);
 
   // Kernel management variables, see kernel definiton
   // for comments on what these are used for.
@@ -145,29 +132,7 @@ __global__ void xs_core_comp(
     xf_mat_row1 = xf_mat_row2;
     xf_mat_row2 = xf_mat_row_temp;
 
-	// Ensure all threads within block have finished computation.
-	__syncthreads();
-
-	// Synchronize across blocks, using just the leading threads.
-	if (threadIdx.x == 0) {
-		// Increment counter once per block.
-		int barrier_blocks = atomicAdd((int*)&g_mutex, 1) + 1;
-		if( barrier_blocks == nblocks ) {
-			printf("block: %d my_sense: %d g_sense %d\n", barrier_blocks, int(my_sense), int(g_sense));
-			g_mutex = 0;
-			g_sense = !g_sense;
-			printf("all blocks reached barrier!\n");
-		} else {
-			printf("block: %d my_sense: %d g_sense %d\n", barrier_blocks, int(my_sense), int(g_sense));
-			while (g_sense != my_sense);
-		}
-		my_sense = !my_sense;
-	}
-
-	__syncthreads();
-	
-	/* __syncblocks(nblocks); */
-
+	grid.sync();
   }
 }
 
@@ -212,13 +177,31 @@ uint8_t * xs_t_geq_q_man(
   uint32_t comp_num_threads = (tlen + 1);
   float threads_per_block = 1024;
   uint32_t nblocks = ceil(comp_num_threads / threads_per_block);
-  dim3 comp_g_dim(nblocks);
-  dim3 comp_b_dim(threads_per_block);
+  dim3 comp_g_dim(nblocks, 1, 1);
+  dim3 comp_b_dim(threads_per_block, 1, 1);
 
   // Launch our kernel.
-  xs_core_comp <<<comp_g_dim, comp_b_dim, (threads_per_block+1) * sizeof(int), *stream>>>
-    ( t_d, q_d, tlen, qlen, xf_mat_row0_d, xf_mat_row1_d, xf_mat_row2_d, 
-	  mis_or_ind, mat_d, nblocks);
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, 0);
+  if (!deviceProp.cooperativeLaunch) {
+	  printf("Device does not support cooperative groups!\n");
+	  exit(0);
+  }
+  printf("blocks: %d\n", nblocks);
+  printf("threads/block: %d\n", int(threads_per_block));
+
+  void *kernelArgs[] = {
+	  (void*) &t_d, (void*) &q_d, (void*) &tlen, (void*) &qlen,
+	  (void*) &xf_mat_row0_d, (void*) &xf_mat_row1_d, (void*) &xf_mat_row2_d,
+	  (void*) &mis_or_ind, (void*) &mat_d, (void*) &nblocks
+  };
+  cuda_error_check( cudaLaunchCooperativeKernel(
+		  (void*) xs_core_comp,
+		  comp_g_dim,
+		  comp_b_dim,
+		  kernelArgs,
+		  (threads_per_block+1)*sizeof(int),
+		  *stream));
 
   // Allocate pinned memory on the host for faster data transfer.
   uint8_t* mat;

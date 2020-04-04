@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define NUM_TEST_FILES 8
+#define NUM_TEST_FILES 5
 #define GAP_SCORE -1
 
 #define MATCH 1
