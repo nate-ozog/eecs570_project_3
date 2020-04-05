@@ -1,4 +1,0 @@
-<target length>
-<query length>
-<target>
-<query>

@@ -2,12 +2,12 @@
 #define XS_CUH
 
 #include "nw_general.h"
-#include "xs_core.h"
-#include "cuda_error_check.h"
+#include "xs_core.cuh"
+#include "cuda_error_check.cuh"
 
 uint8_t * xs_man(
-  char * t,
-  char * q,
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen,
   signed char mis_or_ind
@@ -22,7 +22,7 @@ uint8_t * xs_man(
   cuda_error_check( cudaMalloc((void **) & GPU_mem, num_GPU_mem_bytes) );
   // Initialize allocated memory to zeros.
   // TODO: make this asynchronous later to optimize
-  cuda_error_check( convertToCudartError( 
+  cuda_error_check( convertToCudartError(
 			  cuMemsetD8((CUdeviceptr)(GPU_mem), 0, num_GPU_mem_bytes) ) );
   // Create a stream.
   cudaStream_t stream;

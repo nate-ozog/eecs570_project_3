@@ -8,9 +8,6 @@ void cuda_error_check(cudaError_t e) {
   }
 }
 
-/* From Google's GPU Runtime
-   https://github.com/google/gpu-runtime/blob/master/gpu-runtime.cc
-*/
 static cudaError_t convertToCudartError(CUresult error) {
 	switch (error) {
 	case CUDA_SUCCESS:

@@ -1,0 +1,14 @@
+'label_'
+<AAAA>
+{TTTT}
+<CCCC>
+{GGGG}
+'reusing_just_S1_'
+<>
+{ATCG}
+'reusing_just_S2_'
+<GTCA>
+{}
+'reordering_S1_&_S2_'
+{TTGG}
+<AACC>

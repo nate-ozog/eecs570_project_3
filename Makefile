@@ -5,19 +5,16 @@ CUDA_INC  = -I/usr/local/cuda/include/
 CUDA_LINK = -lcuda
 BASE_MAIN = nw.cpp
 BASE_DEPS = nw.cpp nw_general.h
-CUDA_MAIN = nw.cu
-CUDA_DEPS = nw.cu nw_general.h xs.h xs_core.h
+GPU_SRC = nw.cu testbatch.cpp
+GPU_HDR = nw.cu nw_general.h xs.cuh xs_core.cuh testbatch.hpp cuda_error_check.cuh
 
 all: gpu_nw base_nw gpu_nw_debug
 
-gpu_nw: $(CUDA_DEPS)
-	$(NVCC) $(CFLAGS) $(CUDA_MAIN) -o $@.o $(CUDA_LINK)
+gpu_nw: $(GPU_SRC) $(GPU_HDR)
+	$(NVCC) $(CFLAGS) $(GPU_SRC) -o $@.o $(CUDA_LINK)
 
 base_nw: $(BASE_DEPS)
 	$(CC) $(CFLAGS) $(BASE_MAIN) -o $@.o $(CUDA_INC)
-
-gpu_nw_debug: $(CUDA_DEPS)
-	$(NVCC) $(CFLAGS) -G -g $(CUDA_MAIN) -o $@.o $(CUDA_LINK)
 
 clean:
 	rm -rf *.o

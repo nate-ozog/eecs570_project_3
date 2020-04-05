@@ -2,7 +2,7 @@
 #define XS_CORE_CUH
 
 #include "nw_general.h"
-#include "cuda_error_check.h"
+#include "cuda_error_check.cuh"
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -90,8 +90,8 @@ __global__ void xs_core_comp(
 }
 
 uint8_t * xs_t_geq_q_man(
-  char * t,
-  char * q,
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen,
   signed char mis_or_ind,
@@ -179,12 +179,12 @@ uint8_t * xs_t_geq_q_man(
   // Allocate pinned memory on the host for faster data transfer.
   uint8_t* mat;
   size_t cpu_ptr_mat_bytes = (tlen+1) * (qlen+1) * sizeof(uint8_t);
-  cuda_error_check( 
+  cuda_error_check(
 		  cudaHostAlloc((void**)&mat, cpu_ptr_mat_bytes, cudaHostAllocDefault));
 
   // Copy back our untransformed matrix to the host.
-  cuda_error_check( 
-		  cudaMemcpyAsync(mat, mat_d, cpu_ptr_mat_bytes, 
+  cuda_error_check(
+		  cudaMemcpyAsync(mat, mat_d, cpu_ptr_mat_bytes,
 			  cudaMemcpyDeviceToHost, *stream) );
 
   return mat;

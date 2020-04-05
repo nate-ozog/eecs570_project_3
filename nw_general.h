@@ -12,6 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
+#define SIM_MAT_PATH "datasets/similarity.txt"
 #define NUM_TEST_FILES 8
 #define GAP_SCORE -1
 
@@ -140,11 +141,11 @@ void print_score_as_ptr_mat(
 			  std::cout << q[i-2] << " ";
 		}
 		else {
-			if (i > 1 && j > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+			if (i > 1 && j > 1 && mat[(tlen+1) * (i-1) + j-1] ==
 				mat[(tlen+1)*(i-2) + (j-2)] + nw_get_sim(s, q[i-2], t[j-2])) {
 				std::cout << '\\' << " ";
 			}
-			else if (i > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+			else if (i > 1 && mat[(tlen+1) * (i-1) + j-1] ==
 					mat[(tlen+1) * (i-2) + j-1] + mis_or_ind) {
 				std::cout << '^' << " ";
 			}
@@ -207,10 +208,10 @@ void print_ptr_mat(
 
 
 // Pointer backtracking for standard 2D matrix.
-void nw_ptr_backtrack(
+std::pair<char *, char *> nw_ptr_backtrack (
   uint8_t * mat,
-  char * t,
-  char * q,
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen
 ) {
@@ -244,8 +245,15 @@ void nw_ptr_backtrack(
 			break;
 	  }
   }
-  std::cout << t_algn << std::endl;
-  std::cout << q_algn << std::endl << std::endl;
+	// Copy target alignment to c-string.
+  char * t_algn_c_str = new char [t_algn.length() + 1];
+  std::strcpy (t_algn_c_str, t_algn.c_str());
+	// Copy query alignment to c-string.
+  char * q_algn_c_str = new char [q_algn.length() + 1];
+  std::strcpy (q_algn_c_str, q_algn.c_str());
+	// Put alignment results in pair.
+	std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
+	return algn;
 }
 
 #endif
