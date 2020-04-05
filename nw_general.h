@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define SIM_MAT_PATH "datasets/similarity.txt"
+#define SIM_MAT_PATH "similarity.txt"
 #define NUM_TEST_FILES 8
 #define GAP_SCORE -1
 
@@ -70,11 +70,11 @@ __device__ signed char cuda_nw_get_sim(char Ai, char Bi) {
 }
 
 // Backtrack for standard 2D matrix.
-void nw_backtrack(
+std::pair<char *, char *> nw_backtrack (
   int * mat,
   signed char * s,
-  char * t,
-  char * q,
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen,
   signed char mis_or_ind
@@ -101,8 +101,15 @@ void nw_backtrack(
       --j;
     }
   }
-  std::cout << t_algn << std::endl;
-  std::cout << q_algn << std::endl << std::endl;
+	// Copy target alignment to c-string.
+  char * t_algn_c_str = new char [t_algn.length() + 1];
+  std::strcpy (t_algn_c_str, t_algn.c_str());
+	// Copy query alignment to c-string.
+  char * q_algn_c_str = new char [q_algn.length() + 1];
+  std::strcpy (q_algn_c_str, q_algn.c_str());
+	// Put alignment results in pair.
+	std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
+	return algn;
 }
 
 // Print score matrix as backtracking pointer matrix.

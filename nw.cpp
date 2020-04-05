@@ -1,9 +1,10 @@
 #include "nw_general.h"
+#include "testbatch.hpp"
 
-int * nw_scoring(
+int * nw_scoring (
   signed char * s,
-  char * t,
-  char * q,
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen,
   signed char mis_or_ind
@@ -36,74 +37,52 @@ int * nw_scoring(
   return mat;
 }
 
-int main() {
-  // Input variables.
+// Reads in the similarity matrix file into memory.
+signed char * init_similarity_matrix() {
   std::string input_line;
-  uint32_t tlen = 0;
-  uint32_t qlen = 0;
-  char * t = NULL;
-  char * q = NULL;
-  signed char * s = NULL;
-
-  // Read in similarity matrix file.
-  std::string sim_file = "datasets/similarity.txt";
+  std::string sim_file = SIM_MAT_PATH;
   std::ifstream sim_file_stream(sim_file);
-  s = new signed char[16];
+  signed char * s = new signed char[16];
   unsigned char sim_cnt = 0;
   while (std::getline(sim_file_stream, input_line)) {
     s[sim_cnt] = std::stoi(input_line);
     ++sim_cnt;
   }
+  return s;
+}
 
+int main() {
   // Prepare our time recording.
   auto start = std::chrono::high_resolution_clock::now();
   auto finish = std::chrono::high_resolution_clock::now();
-  auto runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+  auto test_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+  auto total_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
-  // Run through test file.
-  for (uint32_t i = 0; i < NUM_TEST_FILES; ++i) {
+  // Setup system.
+  signed char * sim_mat = init_similarity_matrix();
+  TestBatch test_batch("batch.txt");
+  Test_t test;
+  test_batch.set_matrix(sim_mat);
+  test_batch.set_gapscore(GAP_SCORE);
 
-    // Read in file.
-    std::string test_file = "datasets/" + std::to_string(i) + ".txt";
-    std::ifstream test_file_stream(test_file);
-    uint32_t test_cnt = 0;
-    while (std::getline(test_file_stream, input_line)) {
-      if (test_cnt == 0) {
-        tlen = std::stoll(input_line);
-        t = new char [tlen + 1];
-      }
-      if (test_cnt == 1) {
-        qlen = std::stoll(input_line);
-        q = new char [qlen + 1];
-      }
-      if (test_cnt == 2)
-        strcpy(t, input_line.c_str());
-      if (test_cnt == 3)
-        strcpy(q, input_line.c_str());
-      ++test_cnt;
-    }
-
-    // Run matrix computation and time runtime.
+  // Run through each test in input batch.
+  while (test_batch.next_test(test)) {
     start = std::chrono::high_resolution_clock::now();
-    int * nw_score_mat = nw_scoring(s, t, q, tlen, qlen, GAP_SCORE);
+    int * nw_score_mat = nw_scoring(sim_mat, test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
+    std::pair<char *, char *> algn = nw_backtrack(nw_score_mat, sim_mat, test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
     finish = std::chrono::high_resolution_clock::now();
-    runtime += std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
-
-	// Debug print score matrix as pointer matrix.
-	/* print_score_as_ptr_mat(nw_score_mat, s, t, q, tlen, qlen, GAP_SCORE); */
-
-    // Backtrack through matrix.
-    nw_backtrack(nw_score_mat, s, t, q, tlen, qlen, GAP_SCORE);
-
-    // Clean up memory
+    test_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+    total_runtime += test_runtime;
     delete [] nw_score_mat;
-    delete [] q;
-    delete [] t;
+    // TODO: CAPTURE OUTPUT SCORE OVER ............... HERE v
+    test_batch.log_result(test.id, algn.first, algn.second, 0, test_runtime.count());
+    delete [] algn.first;
+    delete [] algn.second;
   }
 
-  // Clean up similarity matrix memory.
-  delete [] s;
-  // Print out runtime and kill program.
-  std::cerr << "Base Runtime: " << runtime.count() << " us" << std::endl;
+  // Write results and terminate.
+  delete [] sim_mat;
+  test_batch.set_time(total_runtime.count());
+  test_batch.save_results("CPU_results.txt");
   return 0;
 }

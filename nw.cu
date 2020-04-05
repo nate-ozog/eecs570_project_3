@@ -19,7 +19,6 @@ signed char * init_similarity_matrix() {
 
 // Driver.
 int main() {
-
   // Prepare our time recording.
   auto start = std::chrono::high_resolution_clock::now();
   auto finish = std::chrono::high_resolution_clock::now();
@@ -51,6 +50,6 @@ int main() {
 
   // Write results and terminate.
   test_batch.set_time(total_runtime.count());
-  test_batch.save_results("results.txt");
+  test_batch.save_results("GPU_results.txt");
   return 0;
 }
