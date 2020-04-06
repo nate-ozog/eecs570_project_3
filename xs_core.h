@@ -48,12 +48,11 @@ __global__ void xs_core_comp(
   uint8_t * mat,
   uint32_t nblocks
 ) {
-  /* START PULLED UP FROM KERNEL */
   // Get the global and local thread index.
+  int * xf_mat_row_temp = NULL;
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
   uint32_t l_tx = threadIdx.x;
   grid_group grid = this_grid();
-  int * xf_mat_row_temp = NULL;
   extern __shared__ int smem[];
   int * s_row_up = smem;
 
@@ -81,7 +80,6 @@ __global__ void xs_core_comp(
     comp_w += comp_w_increment;
     comp_x_off += (comp_y_off > qlen + 1);
 
-	/* START ORIGINAL KERNEL */
 	  // If we need to write a border element for our query.
 	  if (g_tx == 0 && wr_q_border_elt)
 		xf_mat_row2[0] = (comp_y_off) * mis_or_ind;
@@ -94,7 +92,9 @@ __global__ void xs_core_comp(
 		if (l_tx == 0 || g_tx == comp_x_off)
 		  s_row_up[l_tx] = xf_mat_row1[g_tx - 1];
 		s_row_up[l_tx + 1] = xf_mat_row1[g_tx];
-		__syncthreads();
+	  }
+	  __syncthreads();
+	  if (g_tx >= comp_x_off && g_tx < comp_x_off + comp_w) {
 		// Do the NW cell calculation.
 		int match = xf_mat_row0[g_tx - 1]
 		  + cuda_nw_get_sim(q[comp_y_off - g_tx - 1], t[g_tx - 1]);
@@ -115,7 +115,6 @@ __global__ void xs_core_comp(
 			mat[mat_idx] = DEL;
 		}
 	  }
-	/* END ORIGINAL KERNEL */
 
     // Update other management variables.
     max_comp_w_cnt = comp_w == max_comp_w ?
@@ -187,8 +186,6 @@ uint8_t * xs_t_geq_q_man(
 	  printf("Device does not support cooperative groups!\n");
 	  exit(0);
   }
-  printf("blocks: %d\n", nblocks);
-  printf("threads/block: %d\n", int(threads_per_block));
 
   void *kernelArgs[] = {
 	  (void*) &t_d, (void*) &q_d, (void*) &tlen, (void*) &qlen,
