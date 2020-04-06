@@ -18,12 +18,12 @@ __global__ void xs_core_init(
 ) {
   // Get the global thread index.
   uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
-  // Initialize top row of backtrack matrix
-  if (g_tx < tlen + 1)
-    mat[g_tx] = DEL;
   // Initialize left column of backtrack matrix
   if (g_tx < qlen + 1)
 	  mat[g_tx*(tlen+1)] = INS;
+  // Initialize top row of backtrack matrix
+  if (g_tx < tlen + 1)
+    mat[g_tx] = DEL;
   // Write 0 to the first cell of our transformed matrix row0.
   if (g_tx == 0)
     xf_mat_row0[0] = 0;

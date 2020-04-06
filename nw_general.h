@@ -101,10 +101,62 @@ void nw_backtrack(
     }
   }
   std::cout << t_algn << std::endl;
-  std::cout << q_algn << std::endl;
+  std::cout << q_algn << std::endl << std::endl;
 }
 
-// Print backtracking pointer matrix
+// Print score matrix as backtracking pointer matrix.
+void print_score_as_ptr_mat(
+  int * mat,
+  signed char * s,
+  char * t,
+  char * q,
+  uint32_t tlen,
+  uint32_t qlen,
+  signed char mis_or_ind
+) {
+	std::cout << "tlen: " << tlen << std::endl;
+	std::cout << "qlen: " << qlen << std::endl;
+	std::cout << "template: ";
+	for (int i = 0; i < tlen; i++)
+		std::cout << t[i];
+	std::cout << std::endl;
+	std::cout << "query: ";
+	for (int i = 0; i < qlen; i++)
+		std::cout << q[i];
+	std::cout << std::endl;
+
+  for (int i = 0; i <= qlen+1; ++i) {
+    for (int j = 0; j <= tlen+1; ++j) {
+		if (i == 0) {
+		  if (j <= 1)
+			  std::cout << "." << " ";
+	      else
+			  std::cout << t[j-2] << " ";
+		}
+		else if (j == 0) {
+		  if (i == 1)
+			  std::cout << "." << " ";
+		  else
+			  std::cout << q[i-2] << " ";
+		}
+		else {
+			if (i > 1 && j > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+				mat[(tlen+1)*(i-2) + (j-2)] + nw_get_sim(s, q[i-2], t[j-2])) {
+				std::cout << '\\' << " ";
+			}
+			else if (i > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+					mat[(tlen+1) * (i-2) + j-1] + mis_or_ind) {
+				std::cout << '^' << " ";
+			}
+			else { std::cout << '<' << " "; }
+		}
+	}
+    std::cout << std::endl;
+  }
+}
+
+
+// Print backtracking pointer matrix.
 void print_ptr_mat(
   uint8_t * mat,
   char * t,
@@ -157,12 +209,10 @@ void print_ptr_mat(
 // Pointer backtracking for standard 2D matrix.
 void nw_ptr_backtrack(
   uint8_t * mat,
-  signed char * s,
   char * t,
   char * q,
   uint32_t tlen,
-  uint32_t qlen,
-  signed char mis_or_ind
+  uint32_t qlen
 ) {
   std::string t_algn = "";
   std::string q_algn = "";

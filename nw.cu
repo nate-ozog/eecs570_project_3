@@ -58,7 +58,7 @@ int main() {
     /* print_ptr_mat(nw_ptr_mat, t, q, tlen, qlen); */
 
     // Backtrack through pointer matrix.
-    nw_ptr_backtrack(nw_ptr_mat, s, t, q, tlen, qlen, GAP_SCORE);
+    nw_ptr_backtrack(nw_ptr_mat, t, q, tlen, qlen);
 
     // Clean up memory.
 	cuda_error_check( cudaFreeHost(nw_ptr_mat) );
