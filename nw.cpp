@@ -90,7 +90,7 @@ int main() {
     runtime += std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
 	// Debug print score matrix as pointer matrix.
-	/* print_score_as_ptr_mat(nw_score_mat, s, t, q, tlen, qlen, GAP_SCORE); */
+	print_score_as_ptr_mat(nw_score_mat, s, t, q, tlen, qlen, GAP_SCORE);
 
     // Backtrack through matrix.
     nw_backtrack(nw_score_mat, s, t, q, tlen, qlen, GAP_SCORE);

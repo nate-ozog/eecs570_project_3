@@ -21,8 +21,10 @@ __global__ void xs_core_init(
   if (g_tx < tlen + 1)
     mat[g_tx] = DEL;
   // Write 0 to the first cell of our transformed matrix row0.
-  if (g_tx == 0)
+  if (g_tx == 0) {
     xf_mat_row0[0] = 0;
+	mat[0] = 0;
+  }
   // Write g_tx * mis_or_ind to the first and
   // second cell of the tranformed matrix row1.
   if (g_tx == 1) {

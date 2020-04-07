@@ -12,12 +12,11 @@ uint8_t * xs_man(
   uint32_t qlen,
   signed char mis_or_ind
 ) {
-
+  // Malloc memory for our program.
   uint64_t num_GPU_mem_bytes = 3 * (tlen + 1) * sizeof(int);
   num_GPU_mem_bytes += (tlen+1) * (qlen+1) * sizeof(uint8_t);
   num_GPU_mem_bytes += tlen * sizeof(char);
   num_GPU_mem_bytes += qlen * sizeof(char);
-  // Malloc memory for our program.
   void * GPU_mem = NULL;
   cuda_error_check( cudaMalloc((void **) & GPU_mem, num_GPU_mem_bytes) );
   // Initialize allocated memory to zeros.

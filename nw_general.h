@@ -83,22 +83,37 @@ void nw_backtrack(
   uint32_t j = tlen;
   uint32_t i = qlen;
   while (i > 0 || j > 0) {
+	// match is always prioritized
     if (i > 0 && j > 0 && mat[(tlen+1) * i + j] == mat[(tlen+1) * (i-1) + (j-1)] + nw_get_sim(s, q[i-1], t[j-1])) {
       q_algn = q[i-1] + q_algn;
       t_algn = t[j-1] + t_algn;
       --i;
       --j;
     }
-    else if (i > 0 && mat[(tlen+1) * i + j] == mat[(tlen+1) * (i-1) + j] + mis_or_ind) {
-      q_algn = q[i-1] + q_algn;
-      t_algn = '-' + t_algn;
-      --i;
-    }
-    else {
-      q_algn = '-' + q_algn;
-      t_algn = t[j-1] + t_algn;
-      --j;
-    }
+	else if (tlen >= qlen) { // no changes necessary
+		if (i > 0 && mat[(tlen+1) * i + j] == mat[(tlen+1) * (i-1) + j] + mis_or_ind) { // insertion
+		  q_algn = q[i-1] + q_algn;
+		  t_algn = '-' + t_algn;
+		  --i;
+		}
+		else { // deletion
+		  q_algn = '-' + q_algn;
+		  t_algn = t[j-1] + t_algn;
+		  --j;
+		}
+	}
+	else { // tlen < qlen, so GPU will break ties the other way now... copy that
+		if (i > 0 && mat[(tlen+1) * i + j] == mat[(tlen+1) * i + j-1] + mis_or_ind) { // deletion
+		  q_algn = '-' + q_algn;
+		  t_algn = t[j-1] + t_algn;
+		  --j;
+		}
+		else { // insertion
+		  q_algn = q[i-1] + q_algn;
+		  t_algn = '-' + t_algn;
+		  --i;
+		}
+	}
   }
   std::cout << t_algn << std::endl;
   std::cout << q_algn << std::endl << std::endl;
@@ -140,15 +155,27 @@ void print_score_as_ptr_mat(
 			  std::cout << q[i-2] << " ";
 		}
 		else {
-			if (i > 1 && j > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+			if (i == 1 && j == 1) {
+				std::cout << 'X' << " ";
+			}
+			else if (i > 1 && j > 1 && mat[(tlen+1) * (i-1) + j-1] == 
 				mat[(tlen+1)*(i-2) + (j-2)] + nw_get_sim(s, q[i-2], t[j-2])) {
 				std::cout << '\\' << " ";
 			}
-			else if (i > 1 && mat[(tlen+1) * (i-1) + j-1] == 
-					mat[(tlen+1) * (i-2) + j-1] + mis_or_ind) {
-				std::cout << '^' << " ";
+			else if (tlen >= qlen) { // no changes necessary
+				if (i > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+						mat[(tlen+1) * (i-2) + j-1] + mis_or_ind) {
+					std::cout << '^' << " ";
+				}
+				else { std::cout << '<' << " "; }
 			}
-			else { std::cout << '<' << " "; }
+			else { // tlen < qlen, so GPU will break ties the other way now... copy that
+				if (i > 1 && mat[(tlen+1) * (i-1) + j-1] == 
+						mat[(tlen+1) * (i-1) + j-2] + mis_or_ind) {
+					std::cout << '<' << " ";
+				}
+				else { std::cout << '^' << " "; }
+			}
 		}
 	}
     std::cout << std::endl;
@@ -162,47 +189,84 @@ void print_ptr_mat(
   char * t,
   char * q,
   uint32_t tlen,
-  uint32_t qlen
+  uint32_t qlen,
+  bool swap_t_q
 ) {
-	std::cout << "tlen: " << tlen << std::endl;
-	std::cout << "qlen: " << qlen << std::endl;
+	uint32_t actual_tlen = swap_t_q ? qlen : tlen;
+	uint32_t actual_qlen = swap_t_q ? tlen : qlen;
+	char * actual_t = swap_t_q ? q : t;
+	char * actual_q = swap_t_q ? t : q;
+	std::cout << "tlen: " << actual_tlen << std::endl;
+	std::cout << "qlen: " << actual_qlen << std::endl;
 	std::cout << "template: ";
-	for (int i = 0; i < tlen; i++)
-		std::cout << t[i];
+	for (int i = 0; i < actual_tlen; i++)
+		std::cout << actual_t[i];
 	std::cout << std::endl;
 	std::cout << "query: ";
-	for (int i = 0; i < qlen; i++)
-		std::cout << q[i];
+	for (int i = 0; i < actual_qlen; i++)
+		std::cout << actual_q[i];
 	std::cout << std::endl;
 
-  for (int i = 0; i <= qlen+1; ++i) {
-    for (int j = 0; j <= tlen+1; ++j) {
-		if (i == 0) {
-		  if (j <= 1)
-			  std::cout << "." << " ";
-	      else
-			  std::cout << t[j-2] << " ";
-		}
-		else if (j == 0) {
-		  if (i == 1)
-			  std::cout << "." << " ";
-		  else
-			  std::cout << q[i-2] << " ";
-		}
-		else {
-			uint8_t mvmt = mat[(i-1)*(tlen+1) + j-1];
-			char c;
-			switch (mvmt) {
-				case INS: c = '^'; break;
-				case DEL: c = '<'; break;
-				case MATCH: c = '\\'; break;
-				default: c = 'X'; break;
+	if(swap_t_q) { // swap loop order, flip inserts/deletes
+	  for (int j = 0; j <= tlen+1; ++j) {
+	    for (int i = 0; i <= qlen+1; ++i) {
+			if (i == 0) {
+			  if (j <= 1)
+				  std::cout << "." << " ";
+			  else
+				  std::cout << t[j-2] << " ";
 			}
-		    std::cout << c << " ";
+			else if (j == 0) {
+			  if (i == 1)
+				  std::cout << "." << " ";
+			  else
+				  std::cout << q[i-2] << " ";
+			}
+			else {
+				uint8_t mvmt = mat[(i-1)*(tlen+1) + j-1];
+				char c;
+				switch (mvmt) {
+					case INS: c = '<'; break;
+					case DEL: c = '^'; break;
+					case MATCH: c = '\\'; break;
+					default: c = 'X'; break;
+				}
+				std::cout << c << " ";
+			}
 		}
+		std::cout << std::endl;
+	  }
 	}
-    std::cout << std::endl;
-  }
+	else {
+	  for (int i = 0; i <= qlen+1; ++i) {
+		for (int j = 0; j <= tlen+1; ++j) {
+			if (i == 0) {
+			  if (j <= 1)
+				  std::cout << "." << " ";
+			  else
+				  std::cout << t[j-2] << " ";
+			}
+			else if (j == 0) {
+			  if (i == 1)
+				  std::cout << "." << " ";
+			  else
+				  std::cout << q[i-2] << " ";
+			}
+			else {
+				uint8_t mvmt = mat[(i-1)*(tlen+1) + j-1];
+				char c;
+				switch (mvmt) {
+					case INS: c = '^'; break;
+					case DEL: c = '<'; break;
+					case MATCH: c = '\\'; break;
+					default: c = 'X'; break;
+				}
+				std::cout << c << " ";
+			}
+		}
+		std::cout << std::endl;
+	  }
+	}
 }
 
 
@@ -212,7 +276,8 @@ void nw_ptr_backtrack(
   char * t,
   char * q,
   uint32_t tlen,
-  uint32_t qlen
+  uint32_t qlen,
+  bool swap_t_q
 ) {
   std::string t_algn = "";
   std::string q_algn = "";
@@ -244,8 +309,14 @@ void nw_ptr_backtrack(
 			break;
 	  }
   }
-  std::cout << t_algn << std::endl;
-  std::cout << q_algn << std::endl << std::endl;
+  if (swap_t_q) {
+	  std::cout << q_algn << std::endl;
+	  std::cout << t_algn << std::endl;
+  } else {
+	  std::cout << t_algn << std::endl;
+	  std::cout << q_algn << std::endl;
+  }
+  std::cout << std::endl;
 }
 
 #endif
