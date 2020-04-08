@@ -1,5 +1,5 @@
-#include "nw_general.h"
-#include "xs.h"
+#include "nw_general.hpp"
+#include "xs.cuh"
 
 int main() {
   // Input variables.

@@ -2,21 +2,16 @@ CC        = g++
 CFLAGS    = -std=c++11
 NVCC      = nvcc
 CUDA_INC  = -I/usr/local/cuda/include/
-BASE_MAIN = nw.cpp
-BASE_DEPS = nw.cpp nw_general.h
-CUDA_MAIN = nw.cu
-CUDA_DEPS = nw.cu nw_general.h xs.h xs_core.h
+CPU_SRC = nw.cpp
+CPU_HDR = nw_general.hpp
+GPU_SRC = nw.cu
+GPU_HDR = xs.cuh xs_core.cuh nw_general.hpp
 
-all: gpu_nw base_nw gpu_nw_debug
+gpu_nw: $(GPU_SRC) $(GPU_HDR)
+	$(NVCC) $(CFLAGS) $(GPU_SRC) -o $@.o
 
-gpu_nw: $(CUDA_DEPS)
-	$(NVCC) $(CFLAGS) $(CUDA_MAIN) -o $@.o
-
-base_nw: $(BASE_DEPS)
-	$(CC) $(CFLAGS) $(BASE_MAIN) -o $@.o $(CUDA_INC)
-
-gpu_nw_debug: $(CUDA_DEPS)
-	$(NVCC) $(CFLAGS) -G -g $(CUDA_MAIN) -o $@.o
+base_nw: $(CPU_SRC) $(CPU_HDR)
+	$(CC) $(CFLAGS) $(CPU_SRC) -o $@.o $(CUDA_INC)
 
 clean:
 	rm -rf *.o

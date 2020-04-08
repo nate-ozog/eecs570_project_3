@@ -1,4 +1,4 @@
-#include "nw_general.h"
+#include "nw_general.hpp"
 
 int * nw_scoring(
   signed char * s,

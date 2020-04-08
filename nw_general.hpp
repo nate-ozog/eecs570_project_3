@@ -1,5 +1,5 @@
-#ifndef NW_GENERAL_H
-#define NW_GENERAL_H
+#ifndef NW_GENERAL_HPP
+#define NW_GENERAL_HPP
 
 #include <bits/stdc++.h>
 #include <stdio.h>
@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define NUM_TEST_FILES 7
+#define NUM_TEST_FILES 6
 #define GAP_SCORE -1
 
 // 2-bit encoding for alignment matrix back-pointers
@@ -167,7 +167,7 @@ void nw_ptr_backtrack(
 	  }
   }
   std::cout << t_algn << std::endl;
-  std::cout << q_algn << std::endl << std::endl;
+  std::cout << q_algn << std::endl;
 }
 
 

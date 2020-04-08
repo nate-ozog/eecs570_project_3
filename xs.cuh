@@ -1,9 +1,9 @@
 #ifndef XS_CUH
 #define XS_CUH
 
-#include "nw_general.h"
-#include "xs_core.h"
-#include "cuda_error_check.h"
+#include "nw_general.hpp"
+#include "xs_core.cuh"
+#include "cuda_error_check.cuh"
 
 uint32_t * xs_man(
   char * t,

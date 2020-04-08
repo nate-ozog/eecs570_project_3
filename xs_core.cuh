@@ -1,7 +1,7 @@
 #ifndef XS_CORE_CUH
 #define XS_CORE_CUH
 
-#include "nw_general.h"
+#include "nw_general.hpp"
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -64,6 +64,16 @@ __global__ void xs_core_comp(
   // If we need to write a border element for our target.
   if (g_tx == 0 && wr_t_border_elt)
     xf_mat_row2[comp_x_off + comp_w] = (comp_y_off) * mis_or_ind;
+
+  // Fetch into shared memory as needed.
+  if (g_tx >= comp_x_off && g_tx < comp_x_off + comp_w) {
+    // Fetch into shared memory.
+    if (l_tx == 0 || g_tx == comp_x_off)
+      s_row_up[l_tx] = xf_mat_row1[g_tx - 1];
+    s_row_up[l_tx + 1] = xf_mat_row1[g_tx];
+  }
+  __syncthreads();
+
   // If we are in the compute region.
   if (g_tx >= comp_x_off && g_tx < comp_x_off + comp_w) {
     // Fetch into shared memory.
