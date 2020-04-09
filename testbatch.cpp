@@ -325,7 +325,7 @@ bool TestBatch::log_result( const int id,    const char * const s1_align, const 
 
 void TestBatch::set_matrix( const signed char * const new_matrix ) {
   for ( int i = 0; i < 16; i++ )
-    matrix[i] = (int)new_matrix[i];
+    matrix[i] = new_matrix[i];
 }
 
 void TestBatch::set_gapscore( const signed char new_gap_score ) {
