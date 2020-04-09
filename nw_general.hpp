@@ -21,21 +21,6 @@
 
 __constant__ signed char c_s[16];
 
-// Example similarity matrix.
-//    A  G  C  T
-// A  1 -1 -1 -1
-// G -1  1 -1 -1
-// C -1 -1  1 -1
-// T -1 -1 -1  1
-
-// Example DP Matrix
-//            T
-//        A  G  C  T
-//     A  ..........
-//  Q  G  ..........
-//     C  ..........
-//     T  ..........
-
 uint32_t divide_then_round_up(uint32_t dividend, uint32_t divisor) {
 	return (dividend - 1) / divisor + 1;
 }
@@ -159,7 +144,6 @@ void print_score_as_ptr_mat(
   }
 }
 
-
 // Print backtracking pointer matrix.
 void print_ptr_mat(
   uint8_t * mat,
@@ -208,7 +192,6 @@ void print_ptr_mat(
     std::cout << std::endl;
   }
 }
-
 
 // Pointer backtracking for standard 2D matrix.
 void nw_ptr_backtrack(
