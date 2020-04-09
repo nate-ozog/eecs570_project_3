@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define NUM_TEST_FILES 6
+#define NUM_TEST_FILES 7
 #define GAP_SCORE -1
 
 // 2-bit encoding for alignment matrix back-pointers
@@ -45,10 +45,10 @@ int get_ptr_val(uint32_t* ptr_mat, int i, int j, int h, int w) {
 	if( i < 0 || i >= h || j < 0 || j >= w)
 		return OOB;
 	// Find the uintN value at correct location in pointer matrix
-	uint32_t val = ptr_mat[int(i * ceil(w / float(PTRS_PER_ELT)) + j / PTRS_PER_ELT)];
+	uint32_t val = ptr_mat[int(i * ceil(w / 16.0) + j / 16)];
 	// Use mask and shift to extract PTR_BITS-bit pointer from uintN
 	uint32_t mask = pow(2, PTR_BITS) - 1;
-	int shift = PTR_BITS * (j % PTRS_PER_ELT);
+	int shift = PTR_BITS * (j % 16);
 	return (val & (mask << shift)) >> shift;
 }
 
@@ -179,43 +179,43 @@ void print_ptr_mat(
   uint32_t tlen,
   uint32_t qlen
 ) {
-	std::cout << "tlen: " << tlen << std::endl;
-	std::cout << "qlen: " << qlen << std::endl;
-	std::cout << "template: ";
-	for (int i = 0; i < tlen; i++)
-		std::cout << t[i];
-	std::cout << std::endl;
-	std::cout << "query: ";
-	for (int i = 0; i < qlen; i++)
-		std::cout << q[i];
-	std::cout << std::endl;
+	// std::cout << "tlen: " << tlen << std::endl;
+	// std::cout << "qlen: " << qlen << std::endl;
+	// std::cout << "template: ";
+	// for (int i = 0; i < tlen; i++)
+	// 	std::cout << t[i];
+	// std::cout << std::endl;
+	// std::cout << "query: ";
+	// for (int i = 0; i < qlen; i++)
+	// 	std::cout << q[i];
+	// std::cout << std::endl;
 
   for (int i = 0; i <= qlen+1; ++i) {
     for (int j = 0; j <= tlen+1; ++j) {
-		if (i == 0) {
-		  if (j <= 1)
-			  std::cout << "." << " ";
-	      else
-			  std::cout << t[j-2] << " ";
-		}
-		else if (j == 0) {
-		  if (i == 1)
-			  std::cout << "." << " ";
-		  else
-			  std::cout << q[i-2] << " ";
-		}
-		else {
-			int mvmt = get_ptr_val(mat, i-1, j-1, qlen+1, tlen+1);
-			char c;
-			switch (mvmt) {
-				case INS: c = '^'; break;
-				case DEL: c = '<'; break;
-				case MATCH: c = '\\'; break;
-				default: c = 'X'; break;
-			}
-		    std::cout << c << " ";
-		}
-	}
+      if (i == 0) {
+        if (j <= 1)
+          std::cout << "." << " ";
+          else
+          std::cout << t[j-2] << " ";
+      }
+      else if (j == 0) {
+        if (i == 1)
+          std::cout << "." << " ";
+        else
+          std::cout << q[i-2] << " ";
+      }
+      else {
+        int mvmt = get_ptr_val(mat, i-1, j-1, qlen+1, tlen+1);
+        char c;
+        switch (mvmt) {
+          case INS: c = '^'; break;
+          case DEL: c = '<'; break;
+          case MATCH: c = '\\'; break;
+          default: c = 'X'; break;
+        }
+          std::cout << c << " ";
+      }
+    }
     std::cout << std::endl;
   }
 }

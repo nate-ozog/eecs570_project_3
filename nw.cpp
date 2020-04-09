@@ -61,7 +61,7 @@ int main() {
   auto runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
   // Run through test file.
-  for (uint32_t i = 0; i < NUM_TEST_FILES; ++i) {
+  for (uint32_t i = 6; i < NUM_TEST_FILES; ++i) {
 
     // Read in file.
     std::string test_file = "datasets/" + std::to_string(i) + ".txt";

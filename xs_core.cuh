@@ -87,23 +87,27 @@ __global__ void xs_core_comp(
     int ins = s_row_up[l_tx + 1] + mis_or_ind;
     int del = s_row_up[l_tx] + mis_or_ind;
     // Write back to our current sliding window row index, set pointer.
-	char ptr;
-	if (match >= ins && match >= del) {
-		xf_mat_row2[g_tx] = match;
-		ptr = MATCH;
-	}
-	else if (ins >= match && ins >= del) {
-		xf_mat_row2[g_tx] = ins;
-		ptr = INS;
-	}
-	else {
-		xf_mat_row2[g_tx] = del;
-		ptr = DEL;
-	}
+    char ptr;
+    if (match >= ins && match >= del) {
+      xf_mat_row2[g_tx] = match;
+      ptr = MATCH;
+    }
+    else if (ins >= match && ins >= del) {
+      xf_mat_row2[g_tx] = ins;
+      ptr = INS;
+    }
+    else {
+      xf_mat_row2[g_tx] = del;
+      ptr = DEL;
+    }
+
+    // if (comp_y_off == (24972 + 24970) && g_tx == 24972)
+    //   printf("I EXIST\n");
+
     // Write back to our untransformed matrix.
-	int xidx = g_tx / PTRS_PER_ELT;
-	int xshift = PTR_BITS * (g_tx % PTRS_PER_ELT);
-	int elts_per_row = ceil((tlen+1) / float(PTRS_PER_ELT));
+    int xidx = g_tx / PTRS_PER_ELT;
+    int xshift = PTR_BITS * (g_tx % PTRS_PER_ELT);
+    int elts_per_row = ceil((tlen+1) / float(PTRS_PER_ELT));
     atomicOr(mat + elts_per_row * (comp_y_off - g_tx) + xidx, ptr << xshift);
   }
 }

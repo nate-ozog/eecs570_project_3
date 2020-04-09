@@ -28,7 +28,7 @@ int main() {
   auto runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
   // Run through test file.
-  for (uint32_t i = 0; i < NUM_TEST_FILES; ++i) {
+  for (uint32_t i = 6; i < NUM_TEST_FILES; ++i) {
     std::string test_file = "datasets/" + std::to_string(i) + ".txt";
     std::ifstream test_file_stream(test_file);
     uint32_t test_cnt = 0;
@@ -54,8 +54,8 @@ int main() {
     finish = std::chrono::high_resolution_clock::now();
     runtime += std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
-    // Debug print pointer matrix.
-    /* print_ptr_mat(nw_ptr_mat, t, q, tlen, qlen); */
+    // // Debug print pointer matrix.
+    // print_ptr_mat(nw_ptr_mat, t, q, tlen, qlen);
 
     // Backtrack through pointer matrix.
     nw_ptr_backtrack(nw_ptr_mat, s, t, q, tlen, qlen, GAP_SCORE);
