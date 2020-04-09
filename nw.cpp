@@ -61,15 +61,15 @@ std::pair<char *, char *> nw_backtrack (
       --j;
     }
   }
-	// Copy target alignment to c-string.
+  // Copy target alignment to c-string.
   char * t_algn_c_str = new char [t_algn.length() + 1];
   std::strcpy (t_algn_c_str, t_algn.c_str());
-	// Copy query alignment to c-string.
+  // Copy query alignment to c-string.
   char * q_algn_c_str = new char [q_algn.length() + 1];
   std::strcpy (q_algn_c_str, q_algn.c_str());
-	// Put alignment results in pair.
-	std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
-	return algn;
+  // Put alignment results in pair.
+  std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
+  return algn;
 }
 
 // CPU elementary scoring algorithm.

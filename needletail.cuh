@@ -23,7 +23,7 @@ std::pair<uint8_t *, int> nt_man (
   cudaStream_t stream;
   cudaStreamCreate(&stream);
   std::pair<uint8_t *, int> nt_res
-    = nt_man(t, q, tlen, qlen, mis_or_ind, GPU_mem, &stream);
+    = nt_kernel_man(t, q, tlen, qlen, mis_or_ind, GPU_mem, &stream);
   cudaStreamSynchronize(stream);
   cudaFree(GPU_mem);
   return nt_res;

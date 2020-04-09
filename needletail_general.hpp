@@ -67,14 +67,14 @@ uint32_t divide_then_round_up(uint32_t dividend, uint32_t divisor) {
 
 // Gets pointer value from 2-bit encoded, compressed, matrix.
 int get_ptr_val(uint8_t * ptr_mat, uint32_t i, uint32_t j, uint32_t qlen, uint32_t tlen) {
-	if( i < 0 || i > qlen || j < 0 || j > tlen)
-		return PTR_ERR;
-	uint32_t z_idx = ij_to_z(i, j, qlen, tlen);
-	uint32_t byte_idx = divide_then_round_up(z_idx, PTRS_PER_ELT) - 1;
-	uint8_t byte_val = ptr_mat[byte_idx];
-	uint8_t shift = PTR_BITS * (z_idx % PTRS_PER_ELT);
-	uint8_t mask = 0x03;
-	return (byte_val & (mask << shift)) >> shift;
+  if( i < 0 || i > qlen || j < 0 || j > tlen)
+    return PTR_ERR;
+  uint32_t z_idx = ij_to_z(i, j, qlen, tlen);
+  uint32_t byte_idx = divide_then_round_up(z_idx, PTRS_PER_ELT) - 1;
+  uint8_t byte_val = ptr_mat[byte_idx];
+  uint8_t shift = PTR_BITS * (z_idx % PTRS_PER_ELT);
+  uint8_t mask = 0x03;
+  return (byte_val & (mask << shift)) >> shift;
 }
 
 // Perform the needletail backtrack algorithm on 2bit encoded, compressed, matrix.
@@ -87,64 +87,64 @@ std::pair<char *, char *> nt_backtrack(
   uint32_t qlen,
   signed char mis_or_ind
 ) {
-	// If we have to flip our query and reference at the end.
-	bool flipped = false;
-	if (qlen > tlen) {
-		flipped = true;
-		char * t_temp = t;
-		t = q;
-		q = t_temp;
-		uint32_t tlen_temp = tlen;
-		tlen = qlen;
-		qlen = tlen_temp;
-	}
-	// Now run backtrack algorithm with the assumption that qlen <= tlen.
+  // If we have to flip our query and reference at the end.
+  bool flipped = false;
+  if (qlen > tlen) {
+    flipped = true;
+    char * t_temp = t;
+    t = q;
+    q = t_temp;
+    uint32_t tlen_temp = tlen;
+    tlen = qlen;
+    qlen = tlen_temp;
+  }
+  // Now run backtrack algorithm with the assumption that qlen <= tlen.
   std::string t_algn = "";
   std::string q_algn = "";
   uint32_t j = tlen;
   uint32_t i = qlen;
   while (i > 0 || j > 0) {
-	  switch(get_ptr_val(mat, i, j, qlen, tlen)) {
-		  case PTR_MATCH:
-			  q_algn = q[i - 1] + q_algn;
-			  t_algn = t[j - 1] + t_algn;
-			  --i;
-				--j;
-			break;
-		  case PTR_INS:
-			  q_algn = q[i - 1] + q_algn;
-			  t_algn = '-' + t_algn;
-			  --i;
-			break;
-		  case PTR_DEL:
-			  q_algn = '-' + q_algn;
-			  t_algn = t[j - 1] + t_algn;
-			  --j;
-			break;
-		  default:
-				std::cout << "ERROR, unexpected backtrack-pointer value "
-       		<< get_ptr_val(mat, i, j, qlen, tlen) << " at ("
-					<< i << "," << j << ") with tlen = " << tlen
-					<< " and qlen = " << qlen << std::endl;
-				exit(-1);
-			break;
-	  }
+    switch(get_ptr_val(mat, i, j, qlen, tlen)) {
+      case PTR_MATCH:
+        q_algn = q[i - 1] + q_algn;
+        t_algn = t[j - 1] + t_algn;
+        --i;
+        --j;
+      break;
+      case PTR_INS:
+        q_algn = q[i - 1] + q_algn;
+        t_algn = '-' + t_algn;
+        --i;
+      break;
+      case PTR_DEL:
+        q_algn = '-' + q_algn;
+        t_algn = t[j - 1] + t_algn;
+        --j;
+      break;
+      default:
+        std::cout << "ERROR, unexpected backtrack-pointer value "
+           << get_ptr_val(mat, i, j, qlen, tlen) << " at ("
+          << i << "," << j << ") with tlen = " << tlen
+          << " and qlen = " << qlen << std::endl;
+        exit(-1);
+      break;
+    }
   }
-	// Copy target alignment to c-string.
+  // Copy target alignment to c-string.
   char * t_algn_c_str = new char [t_algn.length() + 1];
   std::strcpy(t_algn_c_str, t_algn.c_str());
-	// Copy query alignment to c-string.
+  // Copy query alignment to c-string.
   char * q_algn_c_str = new char [q_algn.length() + 1];
   std::strcpy(q_algn_c_str, q_algn.c_str());
-	// If we had to flip query and target.
-	if (flipped) {
-		char * t_algn_c_str_temp = t_algn_c_str;
-		t_algn_c_str = q_algn_c_str;
-		q_algn_c_str = t_algn_c_str_temp;
-	}
-	// Put alignment results in pair.
-	std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
-	return algn;
+  // If we had to flip query and target.
+  if (flipped) {
+    char * t_algn_c_str_temp = t_algn_c_str;
+    t_algn_c_str = q_algn_c_str;
+    q_algn_c_str = t_algn_c_str_temp;
+  }
+  // Put alignment results in pair.
+  std::pair<char *, char *> algn (t_algn_c_str, q_algn_c_str);
+  return algn;
 }
 
 #endif
