@@ -77,7 +77,7 @@ int main( int argc, char *argv[] ) {
       matrix
       );
     */
-    result = parasail_nw_trace_striped_8(
+    result = parasail_nw_trace_striped_32(
       test.s2, test.s2_len,
       test.s1, test.s1_len,
       -gap_score_in, -gap_score_in,
