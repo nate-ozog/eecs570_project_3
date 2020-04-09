@@ -16,5 +16,17 @@ gpu_nw: $(GPU_SRC) $(GPU_HDR)
 base_nw: $(CPU_SRC) $(CPU_HDR)
 	$(CC) $(CFLAGS) $(CPU_SRC) -o $@.o $(CUDA_INC)
 
+aligngen_test: aligngen_test.cpp aligngen.cpp aligngen.h
+	$(CC) -std=c++11 aligngen_test.cpp aligngen.cpp -o $@.o
+
+testbatch_test: testbatch_test.cpp testbatch.cpp testbatch.h
+	$(CC) -std=c++11 testbatch_test.cpp testbatch.cpp -o $@.o
+
+batchgen: batchgen.cpp aligngen.cpp aligngen.h
+	$(CC) -std=c++11 batchgen.cpp aligngen.cpp -o $@.o
+
+parasail_nw: parasail_nw.cpp testbatch.cpp testbatch.hpp ./external/parasail-master/build/libparasail.a
+	$(CC) -std=c++11 parasail_nw.cpp testbatch.cpp -L./external/parasail-master/build/ -lparasail -o parasail_nw.o
+
 clean:
 	rm -rf *.o

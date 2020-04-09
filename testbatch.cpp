@@ -325,10 +325,10 @@ bool TestBatch::log_result( const int id,    const char * const s1_align, const 
 
 void TestBatch::set_matrix( const signed char * const new_matrix ) {
   for ( int i = 0; i < 16; i++ )
-    matrix[i] = new_matrix[i];
+    matrix[i] = (int)new_matrix[i];
 }
 
-void TestBatch::set_gapscore( const int new_gap_score ) {
+void TestBatch::set_gapscore( const signed char new_gap_score ) {
   gap_score = new_gap_score;
 }
 
@@ -357,7 +357,7 @@ bool TestBatch::save_results( const char * const filename ) {
   fout << matrix[15] << "\n";
 
   // Write the gap score
-  fout << "g= " << gap_score << "\n\n";
+  fout << "g= " << (int)gap_score << "\n\n";
 
   // Write the results for each test
   for ( int i = 0; i < tests.size(); i++ ) {
