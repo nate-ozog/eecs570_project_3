@@ -35,15 +35,22 @@ int main() {
 
   // Run through each test in input batch.
   while (test_batch.next_test(test)) {
+    // Start timer.
     start = std::chrono::high_resolution_clock::now();
-    uint8_t * nw_ptr_mat = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
-    std::pair<char *, char *> algn = nw_ptr_backtrack(nw_ptr_mat, test.s1, test.s2, test.s1_len, test.s2_len);
+    // Run needletail GPU kernel.
+    std::pair<uint8_t *, int> nt_res
+      = nt_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
+    // Run needletail backtrack.
+    std::pair<char *, char *> algn
+      = nt_backtrack(nt_res.first, test.s1, test.s2, test.s1_len, test.s2_len);
+    // Stop timer and log.
     finish = std::chrono::high_resolution_clock::now();
     test_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
     total_runtime += test_runtime;
-    cuda_error_check(cudaFreeHost(nw_ptr_mat));
-    // TODO: CAPTURE OUTPUT SCORE OVER ............... HERE v
-    test_batch.log_result(test.id, algn.first, algn.second, 0, test_runtime.count());
+    // Free GPU pinned memory.
+    cuda_error_check( cudaFreeHost(nt_res.first) );
+    // Log batch result.
+    test_batch.log_result(test.id, algn.first, algn.second, nt_res.second, test_runtime.count());
     delete [] algn.first;
     delete [] algn.second;
   }
