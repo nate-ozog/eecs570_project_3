@@ -32,7 +32,7 @@ public:
   bool log_result  ( const int id,    const char * const s1_align, const char * const s2_align,
                      const int score, const unsigned long time );
   void set_matrix  ( const signed char * const new_matrix );
-  void set_gapscore( const int new_gap_score );
+  void set_gapscore( const signed char new_gap_score );
   void set_time    ( const unsigned long new_time );
   bool save_results( const char * const filename );
 
@@ -50,12 +50,13 @@ private:
   };
 
   std::vector<InternalTest_t> tests;
-  std::vector<std::string>    test_strings   = {""}; // String 0 is expected to exist and be empty
-  std::vector<std::string>    result_strings = {""}; // String 0 is expected to exist and be empty
+  std::vector<std::string>    test_strings = {""}; // String 0 is expected to exist and be empty
+  std::vector<std::string>    result_strings;
 
-  int           next_idx   = 0;
-  int           matrix[16] = {0};
-  int           gap_score  = 0;
+  int next_idx __attribute__((aligned(64))) = 0;
+
+  signed int    matrix[16] = {0};
+  signed int    gap_score  = 0;
   unsigned long time       = 0;
 };
 
