@@ -26,7 +26,7 @@ batchgen: batchgen.cpp aligngen.cpp aligngen.h
 	$(CC) -std=c++11 batchgen.cpp aligngen.cpp -o $@.o
 
 parasail_nw: parasail_nw.cpp testbatch.cpp testbatch.hpp ./external/parasail-master/build/libparasail.a
-	$(CC) -std=c++11 parasail_nw.cpp testbatch.cpp -L./external/parasail-master/build/ -lparasail -o parasail_nw.o
+	$(CC) -std=c++11 parasail_nw.cpp testbatch.cpp -L./external/parasail-master/build/ -lparasail -pthread -o parasail_nw.o
 
 clean:
 	rm -rf *.o
