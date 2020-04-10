@@ -37,7 +37,23 @@ __device__ signed char cuda_nw_get_sim(char Ai, char Bi) {
   return c_s[cuda_base_to_val(Ai) * 4 + cuda_base_to_val(Bi)];
 }
 
-// Pointer backtracking for standard 2D matrix.
+// Converts (i,j) to "z" compressed format index.
+uint32_t ij_to_z(uint32_t i, uint32_t j, uint32_t tlen, uint32_t qlen) {
+  uint32_t z = 0;
+  uint32_t jpi = j + i;
+  if (jpi <= qlen)
+    z = jpi * (jpi + 1) / 2 + i;
+  else if (jpi <= tlen)
+    z = qlen * (qlen + 1) / 2 + (qlen + 1) * (jpi - qlen) + i;
+  else
+    z = (tlen + 1) * (qlen + 1)
+      - (tlen + qlen + 1 - jpi) * (tlen + qlen + 2 - jpi) / 2
+      + i - (jpi - tlen);
+  // printf("%d\n", z);
+  return z;
+}
+
+// Pointer backtracking for compressed matrix.
 std::pair<char *, char *> nw_ptr_backtrack (
   uint8_t * mat,
   bool flipped,
@@ -51,7 +67,7 @@ std::pair<char *, char *> nw_ptr_backtrack (
   uint32_t j = tlen;
   uint32_t i = qlen;
   while (i > 0 || j > 0) {
-    switch(mat[i*(tlen+1)+j]) {
+    switch(mat[ij_to_z(i, j, tlen, 1len)]) {
       case MATCH:
         q_algn = q[i-1] + q_algn;
         t_algn = t[j-1] + t_algn;
@@ -69,7 +85,7 @@ std::pair<char *, char *> nw_ptr_backtrack (
         break;
       default:
         std::cout << "ERROR, unexpected back-pointer value: ";
-        std::cout << mat[i*(tlen+1)+j] << std::endl;
+        std::cout << mat[ij_to_z(i, j, tlen, 1len)] << std::endl;
         std::cout << "i: " << i << "\tj: " << j << std::endl;
         std::cout << "tlen: " << tlen << "\tqlen: " << qlen << std::endl;
         exit(-1);
