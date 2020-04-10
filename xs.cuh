@@ -34,7 +34,7 @@ uint8_t * xs_man(
   // Run our kernel manager on a stream.
   cudaStream_t stream;
   cudaStreamCreate(&stream);
-  uint8_t * mat = xs_t_geq_q_man(t, q, tlen, qlen, mis_or_ind, GPU_mem, &stream);
+  uint8_t * mat = xs_t_geq_q_man(t, q, tlen, qlen, mis_or_ind, GPU_mem);
   cudaStreamSynchronize(stream);
   cudaFree(GPU_mem);
   return mat;
