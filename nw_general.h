@@ -1,5 +1,5 @@
-#ifndef NW_GENERAL_HPP
-#define NW_GENERAL_HPP
+#ifndef NW_GENERAL_H
+#define NW_GENERAL_H
 
 #include <bits/stdc++.h>
 #include <stdio.h>
