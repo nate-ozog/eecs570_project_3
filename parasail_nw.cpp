@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <pthread.h>
 #include "testbatch.hpp"
 #include "external/parasail-master/parasail.h"
 
@@ -69,14 +70,6 @@ int main( int argc, char *argv[] ) {
     start = chrono::high_resolution_clock::now();
 
     // Perform the alignment (32-bit scores)
-    /*
-    result = parasail_nw_trace_striped_32(
-      test.s2, test.s2_len,
-      test.s1, test.s1_len,
-      2, 1,
-      matrix
-      );
-    */
     result = parasail_nw_trace_striped_32(
       test.s2, test.s2_len,
       test.s1, test.s1_len,

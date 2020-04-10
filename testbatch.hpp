@@ -50,10 +50,11 @@ private:
   };
 
   std::vector<InternalTest_t> tests;
-  std::vector<std::string>    test_strings   = {""}; // String 0 is expected to exist and be empty
-  std::vector<std::string>    result_strings = {""}; // String 0 is expected to exist and be empty
+  std::vector<std::string>    test_strings = {""}; // String 0 is expected to exist and be empty
+  std::vector<std::string>    result_strings;
 
-  int           next_idx   = 0;
+  int next_idx __attribute__((aligned(64))) = 0;
+
   signed int    matrix[16] = {0};
   signed int    gap_score  = 0;
   unsigned long time       = 0;
