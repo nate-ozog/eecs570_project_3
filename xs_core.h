@@ -31,6 +31,8 @@ __global__ void xs_core_init(
     row1[g_tx] = mis_or_ind;
 }
 
+
+
 __global__ void xs_core_comp(
   char * t,
   char * q,
@@ -48,25 +50,24 @@ __global__ void xs_core_comp(
   uint32_t g_tid = blockIdx.x * blockDim.x + threadIdx.x;
   uint32_t g_idx = g_tid + g_offset;
   uint32_t l_tid = threadIdx.x;
-  uint32_t l_offset = max(0, g_offset - blockIdx.x * blockDim.x);
-  uint32_t l_idx = l_tid + l_offset;
   extern __shared__ int smem[];
   int * s_row_up = smem;
 
   // Fill in SM at computed positions
-  /* if (g_tid < g_nthreads) */
-	  /* s_row_up[l_idx] = row1[g_idx]; */
+  if (g_tid < g_nthreads)
+	  s_row_up[l_tid+1] = row1[g_idx];
   
+  // Write SM border element
+  if (l_tid == 0)
+      s_row_up[0] = row1[g_idx-1];
+
   // If we need to write a border element on diagonal
   if (g_tid == 0 && row <= qlen)
-		row2[row] = row * mis_or_ind;
+	  row2[row] = row * mis_or_ind;
 
   // If we need to write a border element in left column
-  if (l_tid == 0 && row <= tlen) {
-    /* s_row_up[0] = row1[0]; // Also write in SM border */
-	if (g_tid == 0)
-		row2[0] = row * mis_or_ind;
-  }
+  if (g_tid == 0 && row <= tlen)
+	  row2[0] = row * mis_or_ind;
 
   // Synchronize all threads, so that SM values are set.
   __syncthreads();
@@ -74,10 +75,8 @@ __global__ void xs_core_comp(
   // Do the NW cell calculation.
   if (g_tid < g_nthreads) {
     int match = row0[g_idx-1] + cuda_nw_get_sim(q[g_idx-1], t[row-g_idx-1]);
-    /* int del = s_row_up[l_idx] + mis_or_ind; */
-    /* int ins = s_row_up[l_idx-1] + mis_or_ind; */
-	int del = row1[g_idx] + mis_or_ind;
-	int ins = row1[g_idx-1] + mis_or_ind;
+    int del = s_row_up[l_tid+1] + mis_or_ind;
+    int ins = s_row_up[l_tid] + mis_or_ind;
 
     // Write back to our current sliding window row index, set pointer.
 	int mat_idx = row-g_idx + g_idx*(tlen+1);
@@ -154,7 +153,7 @@ uint8_t * xs_t_geq_q_man(
   // Prepare the first 2 rows of our transformed compute matrix,
   // and the border elements for our untranformed matrix.
   uint32_t init_nthreads = (tlen + 1) > (qlen + 1) ? (tlen + 1) : (qlen + 1);
-  dim3 init_grid_dim(ceil(init_nthreads / ((float) 1024)));
+  dim3 init_grid_dim(CEILDIV(init_nthreads, 1024));
   dim3 init_block_dim(1024);
   xs_core_init <<<init_grid_dim, init_block_dim, 0, *stream>>>
     (tlen, qlen, mis_or_ind, row0_d, row1_d, mat_d);
@@ -166,10 +165,10 @@ uint8_t * xs_t_geq_q_man(
 	  uint32_t block_size = 1024;
 	  uint32_t nthreads = get_nthreads(row, tlen, qlen);
 	  uint32_t offset = get_offset(row, tlen, qlen);
-	  dim3 grid_dim(ceil(nthreads / ((float) block_size)));
+	  dim3 grid_dim(CEILDIV(nthreads, block_size));
 
     // Launch our kernel.
-    xs_core_comp <<< grid_dim, block_size, block_size * sizeof(int), *stream >>>
+    xs_core_comp <<< grid_dim, block_size, (block_size+1) * sizeof(int), *stream >>>
       (t_d, q_d, tlen, qlen, row, offset, nthreads, 
 	    mis_or_ind, row0_d, row1_d, row2_d, mat_d);
 
