@@ -54,7 +54,7 @@ int main() {
   auto start = std::chrono::high_resolution_clock::now();
 
   // Create N threads.
-	int NUM_THREADS = 1;
+	int NUM_THREADS = 16;
 	pthread_t t[NUM_THREADS];
   struct t_args t_args[NUM_THREADS];
   // Initialize the running flag to null
