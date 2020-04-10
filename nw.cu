@@ -23,14 +23,14 @@ signed char * init_similarity_matrix() {
 // Worker thread function.
 void * worker(void * arg) {
   Test_t test;
-  auto start;
-  auto end;
+  auto start = std::chrono::high_resolution_clock::now();
+  auto end = std::chrono::high_resolution_clock::now();
   while ( test_batch.next_test( test ) ) {
     start = std::chrono::high_resolution_clock::now();
     bool swap_t_q = test.s2_len > test.s1_len;
     if (swap_t_q) {
-      std::swap(t, q);
-      std::swap(tlen, qlen);
+      std::swap(test.s1, test.s2);
+      std::swap(test.s1_len, test.s2_len);
     }
     std::pair<uint8_t *, int> nw_res
       = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);

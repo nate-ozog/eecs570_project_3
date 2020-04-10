@@ -2,7 +2,7 @@
 #define XS_CORE_CUH
 
 #include "nw_general.h"
-#include "cuda_error_check.h"
+#include "cuda_error_check.cuh"
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -29,6 +29,23 @@ __global__ void xs_core_init(
   // second cell of the tranformed matrix row1.
   if (g_tx < 2)
     row1[g_tx] = mis_or_ind;
+}
+
+
+
+// Converts sheared kernel indices (i,j) to "z" compressed format index.
+__device__ uint32_t sheared_ij_to_z(uint32_t i, uint32_t j, uint32_t tlen, uint32_t qlen) {
+  uint32_t z = 0;
+  if (j <= qlen)
+    z = j * (j + 1) / 2 + i;
+  else if (j <= tlen)
+    z = qlen * (qlen + 1) / 2 + (qlen + 1) * (j - qlen) + i;
+  else
+    z = (tlen + 1) * (qlen + 1)
+      - (tlen + qlen + 1 - j) * (tlen + qlen + 2 - j) / 2
+      + i - (j - tlen);
+  // printf("%d\n", z);
+  return z;
 }
 
 
@@ -120,9 +137,9 @@ uint32_t get_offset(uint32_t row, uint32_t tlen, uint32_t qlen)
 }
 
 
-uint8_t * xs_t_geq_q_man(
-  char * t,
-  char * q,
+std::pair<uint8_t*, int> xs_t_geq_q_man(
+  const char * t,
+  const char * q,
   uint32_t tlen,
   uint32_t qlen,
   signed char mis_or_ind,
@@ -146,15 +163,15 @@ uint8_t * xs_t_geq_q_man(
   char * q_d = t_d + tlen;
 
   // Copy our target and query to the GPU.
-  cudaMemcpyAsync(t_d, t, tlen * sizeof(char), cudaMemcpyHostToDevice, *stream);
-  cudaMemcpyAsync(q_d, q, qlen * sizeof(char), cudaMemcpyHostToDevice, *stream);
+  cudaMemcpyAsync(t_d, t, tlen * sizeof(char), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(q_d, q, qlen * sizeof(char), cudaMemcpyHostToDevice);
 
   // Prepare the first 2 rows of our transformed compute matrix,
   // and the border elements for our untranformed matrix.
   uint32_t init_nthreads = (tlen + 1) > (qlen + 1) ? (tlen + 1) : (qlen + 1);
   dim3 init_grid_dim(CEILDIV(init_nthreads, 1024));
   dim3 init_block_dim(1024);
-  xs_core_init <<<init_grid_dim, init_block_dim, 0, *stream>>>
+  xs_core_init <<<init_grid_dim, init_block_dim, 0>>>
     (tlen, qlen, mis_or_ind, row0_d, row1_d, mat_d);
 
   // Loop through every wavefront/diagonal.
@@ -167,7 +184,7 @@ uint8_t * xs_t_geq_q_man(
 	  dim3 grid_dim(CEILDIV(nthreads, block_size));
 
     // Launch our kernel.
-    xs_core_comp <<< grid_dim, block_size, (block_size+1) * sizeof(int), *stream >>>
+    xs_core_comp <<< grid_dim, block_size, (block_size+1) * sizeof(int)>>>
       (t_d, q_d, tlen, qlen, row, offset, nthreads,
 	    mis_or_ind, row0_d, row1_d, row2_d, mat_d);
 
@@ -187,9 +204,9 @@ uint8_t * xs_t_geq_q_man(
   // Copy back our untransformed matrix to the host.
   cuda_error_check(
 		  cudaMemcpyAsync(mat, mat_d, cpu_ptr_mat_bytes,
-			  cudaMemcpyDeviceToHost, *stream) );
+			  cudaMemcpyDeviceToHost) );
 
-  return mat;
+  return std::make_pair(mat, 0);
 }
 
 #endif
