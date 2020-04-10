@@ -21,27 +21,28 @@ signed char * init_similarity_matrix() {
 }
 
 // Worker thread function.
-void *worker( void *arg ) {
+void * worker(void * arg) {
   Test_t test;
-  std::chrono::high_resolution_clock::time_point start, end;
-
+  auto start;
+  auto end;
   while ( test_batch.next_test( test ) ) {
     start = std::chrono::high_resolution_clock::now();
-
-    uint8_t * nw_ptr_mat = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
-
+    bool swap_t_q = test.s2_len > test.s1_len;
+    if (swap_t_q) {
+      std::swap(t, q);
+      std::swap(tlen, qlen);
+    }
+    std::pair<uint8_t *, int> nw_res
+      = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
+    std::pair<char *, char *> algn
+      = nw_ptr_backtrack(nw_res.first, swap_t_q, test.s1, test.s2, test.s1_len, test.s2_len);
+    cudaFreeHost(nw_res.first);
     end = std::chrono::high_resolution_clock::now();
-
-    std::pair<char *, char *> algn = nw_ptr_backtrack(nw_ptr_mat, test.s1, test.s2, test.s1_len, test.s2_len);
-    cuda_error_check(cudaFreeHost(nw_ptr_mat));
-
-    test_batch.log_result( test.id, algn.first, algn.second, 0,
-                           std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() );
-
+    test_batch.log_result( test.id, algn.first, algn.second, nw_res.second,
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
     delete [] algn.first;
     delete [] algn.second;
   }
-
   return NULL;
 }
 
@@ -54,19 +55,16 @@ int main() {
   delete [] sim_mat;
 
   // Create N threads.
-	int NUM_THREADS = 16;
-	pthread_t t[NUM_THREADS];
+  int NUM_THREADS = 16;
+  pthread_t t[NUM_THREADS];
 
   auto start = std::chrono::high_resolution_clock::now();
-
   // Launch the worker threads
   for ( int i = 0; i < NUM_THREADS; i++ )
     pthread_create( &t[i], NULL, worker, NULL );
-
   // Join the worker threads
   for ( int i = 0; i < NUM_THREADS; i++ )
     pthread_join( t[i], NULL );
-
   auto finish = std::chrono::high_resolution_clock::now();
 
   // Write results and terminate.

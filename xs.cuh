@@ -5,10 +5,9 @@
 #include "xs_core.cuh"
 #include "cuda_error_check.cuh"
 
-// Critical section lock.
 std::mutex mtx;
 
-uint8_t * xs_man(
+std::pair<uint8_t *, int> xs_man(
   const char * t,
   const char * q,
   uint32_t tlen,
@@ -26,18 +25,16 @@ uint8_t * xs_man(
   size_t free = 0, total = 0;
   // REMOVE.....v...this is overprovision to allow normal GPU
   // operation on a system that is not used purely for compute!
-  while (free < 2*num_GPU_mem_bytes)
-    cuda_error_check( cudaMemGetInfo(&free, &total) );
-  cuda_error_check( cudaMalloc((void **) & GPU_mem, num_GPU_mem_bytes) );
+  while (free < 2 * num_GPU_mem_bytes)
+    cudaMemGetInfo(&free, &total);
+  cudaMalloc((void **) & GPU_mem, num_GPU_mem_bytes);
   mtx.unlock();
 
-  // Run our kernel manager on a stream.
-  cudaStream_t stream;
-  cudaStreamCreate(&stream);
-  uint8_t * mat = xs_t_geq_q_man(t, q, tlen, qlen, mis_or_ind, GPU_mem);
-  cudaStreamSynchronize(stream);
+  // Run our kernel manager.
+  std::pair<uint8_t *, int> res
+    = xs_t_geq_q_man(t, q, tlen, qlen, mis_or_ind, GPU_mem);
   cudaFree(GPU_mem);
-  return mat;
+  return res;
 }
 
 #endif
