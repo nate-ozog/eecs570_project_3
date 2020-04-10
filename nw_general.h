@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cmath>
 #include <chrono>
+#include <mutex>
 #include "cuda.h"
 #include "cuda_runtime.h"
 
