@@ -55,8 +55,8 @@ private:
 
   int next_idx __attribute__((aligned(64))) = 0;
 
-  signed int    matrix[16] = {0};
-  signed int    gap_score  = 0;
+  signed char   matrix[16] = {0};
+  signed char   gap_score  = 0;
   unsigned long time       = 0;
 };
 

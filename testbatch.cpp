@@ -351,9 +351,9 @@ bool TestBatch::save_results( const char * const filename ) {
   // Write the similarity matrix
   fout << "m= ";
   for ( int i = 0; i < 15; i++ ) {
-    fout << matrix[i] << ",";
+    fout << (int)matrix[i] << ",";
   }
-  fout << matrix[15] << "\n";
+  fout << (int)matrix[15] << "\n";
 
   // Write the gap score
   fout << "g= " << (int)gap_score << "\n\n";
