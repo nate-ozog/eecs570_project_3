@@ -149,6 +149,8 @@ std::pair<uint8_t *, int> xs_t_geq_q_man(
 
   // Prepare the first 2 rows of our transformed compute matrix,
   // and the border elements for our untranformed matrix.
+  pthread_barrier_wait( &barrier );
+
   dim3 init_grid_dim(divide_then_round_up((tlen + 1), 1024), 1, 1);
   dim3 init_block_dim(1024, 1, 1);
   xs_core_init <<<init_grid_dim, init_block_dim>>>
@@ -157,10 +159,11 @@ std::pair<uint8_t *, int> xs_t_geq_q_man(
   // Launch our dynamic programming kernel.
   dim3 comp_grid_dim(1, 1, 1);
   dim3 comp_block_dim(1024, 1, 1);
-  pthread_barrier_wait( &barrier );
   xs_core_comp <<< comp_grid_dim, comp_block_dim>>>
     (t_d, q_d, tlen, qlen, mis_or_ind, row0_d,
       row1_d, row2_d, mat_d);
+
+  pthread_barrier_wait( &barrier );
 
   // Allocate pinned memory on the host for faster data transfer.
   uint8_t * mat;

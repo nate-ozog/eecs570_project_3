@@ -55,7 +55,7 @@ int main() {
   delete [] sim_mat;
 
   // Create N threads.
-  int NUM_THREADS = 16;
+  int NUM_THREADS = 128;
   pthread_t t[NUM_THREADS];
 
   pthread_barrier_init( &barrier, NULL, NUM_THREADS );
