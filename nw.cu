@@ -21,30 +21,30 @@ signed char * init_similarity_matrix() {
   return s;
 }
 
-// Worker thread function.
-void * worker(void * arg) {
-  Test_t test;
-  std::chrono::high_resolution_clock::time_point start, end;
-  while ( test_batch.next_test( test ) ) {
-    start = std::chrono::high_resolution_clock::now();
-    bool swap_t_q = test.s2_len > test.s1_len;
-    if (swap_t_q) {
-      std::swap(test.s1, test.s2);
-      std::swap(test.s1_len, test.s2_len);
-    }
-    std::pair<uint8_t *, int> nw_res
-      = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
-    std::pair<char *, char *> algn
-      = nw_ptr_backtrack(nw_res.first, swap_t_q, test.s1, test.s2, test.s1_len, test.s2_len);
-    cudaFreeHost(nw_res.first);
-    end = std::chrono::high_resolution_clock::now();
-    test_batch.log_result( test.id, algn.first, algn.second, nw_res.second,
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
-    delete [] algn.first;
-    delete [] algn.second;
-  }
-  return NULL;
-}
+// // Worker thread function.
+// void * worker(void * arg) {
+//   Test_t test;
+//   std::chrono::high_resolution_clock::time_point start, end;
+//   while ( test_batch.next_test( test ) ) {
+//     start = std::chrono::high_resolution_clock::now();
+//     bool swap_t_q = test.s2_len > test.s1_len;
+//     if (swap_t_q) {
+//       std::swap(test.s1, test.s2);
+//       std::swap(test.s1_len, test.s2_len);
+//     }
+//     std::pair<uint8_t *, int> nw_res
+//       = xs_man(test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE);
+//     std::pair<char *, char *> algn
+//       = nw_ptr_backtrack(nw_res.first, swap_t_q, test.s1, test.s2, test.s1_len, test.s2_len);
+//     cudaFreeHost(nw_res.first);
+//     end = std::chrono::high_resolution_clock::now();
+//     test_batch.log_result( test.id, algn.first, algn.second, nw_res.second,
+//       std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+//     delete [] algn.first;
+//     delete [] algn.second;
+//   }
+//   return NULL;
+// }
 
 // Driver.
 int main() {
@@ -54,24 +54,33 @@ int main() {
   test_batch.set_gapscore(GAP_SCORE);
   delete [] sim_mat;
 
-  // Create N threads.
-  int NUM_THREADS = 128;
-  pthread_t t[NUM_THREADS];
+  Test_t tests[NUM_HW_QS];
+  uint32_t batch_cnt = 0;
+  while ( test_batch.next_test( tests[batch_cnt] ) ) {
+    bool swap_t_q = tests[batch_cnt].s2_len > tests[batch_cnt].s1_len;
+    if (swap_t_q) {
+      std::swap(tests[batch_cnt].s1, tests[batch_cnt].s2);
+      std::swap(tests[batch_cnt].s1_len, tests[batch_cnt].s2_len);
+    }
+    ++batch_cnt;
+    if (batch_cnt == NUM_HW_QS) {
+      stream_man(tests);
+      batch_cnt = 0;
+    }
+  }
 
-  pthread_barrier_init( &barrier, NULL, NUM_THREADS );
 
-  auto start = std::chrono::high_resolution_clock::now();
-  // Launch the worker threads
-  for ( int i = 0; i < NUM_THREADS; i++ )
-    pthread_create( &t[i], NULL, worker, NULL );
-  // Join the worker threads
-  for ( int i = 0; i < NUM_THREADS; i++ )
-    pthread_join( t[i], NULL );
-  auto finish = std::chrono::high_resolution_clock::now();
+  // // Launch the worker threads
+  // for ( int i = 0; i < NUM_THREADS; i++ )
+  //   pthread_create( &t[i], NULL, worker, NULL );
+  // // Join the worker threads
+  // for ( int i = 0; i < NUM_THREADS; i++ )
+  //   pthread_join( t[i], NULL );
+  // auto finish = std::chrono::high_resolution_clock::now();
 
-  // Write results and terminate.
-  auto total_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
-  test_batch.set_time(total_runtime.count());
-  test_batch.save_results("GPU_results.txt");
+  // // Write results and terminate.
+  // auto total_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
+  // test_batch.set_time(total_runtime.count());
+  // test_batch.save_results("GPU_results.txt");
   return 0;
 }

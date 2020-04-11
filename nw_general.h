@@ -18,6 +18,8 @@
 #define MATCH        1
 #define DEL          2
 #define INS          3
+#define NUM_HW_QS    32
+#define BLOCK_SIZE   1024
 
 __constant__ signed char c_s[16];
 
