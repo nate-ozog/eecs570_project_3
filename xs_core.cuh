@@ -3,6 +3,7 @@
 
 #include "nw_general.h"
 #include "cuda_error_check.cuh"
+#include "barrier.h"
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -156,6 +157,7 @@ std::pair<uint8_t *, int> xs_t_geq_q_man(
   // Launch our dynamic programming kernel.
   dim3 comp_grid_dim(1, 1, 1);
   dim3 comp_block_dim(1024, 1, 1);
+  pthread_barrier_wait( &barrier );
   xs_core_comp <<< comp_grid_dim, comp_block_dim>>>
     (t_d, q_d, tlen, qlen, mis_or_ind, row0_d,
       row1_d, row2_d, mat_d);

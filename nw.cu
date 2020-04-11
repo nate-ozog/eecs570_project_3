@@ -4,6 +4,7 @@
 #include <pthread.h>
 
 TestBatch test_batch("batch.txt");
+pthread_barrier_t barrier;
 
 // Reads in the similarity matrix file into GPU constant memory.
 signed char * init_similarity_matrix() {
@@ -54,8 +55,10 @@ int main() {
   delete [] sim_mat;
 
   // Create N threads.
-  int NUM_THREADS = 64;
+  int NUM_THREADS = 16;
   pthread_t t[NUM_THREADS];
+
+  pthread_barrier_init( &barrier, NULL, NUM_THREADS );
 
   auto start = std::chrono::high_resolution_clock::now();
   // Launch the worker threads
