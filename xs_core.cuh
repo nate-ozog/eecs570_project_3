@@ -2,6 +2,7 @@
 #define XS_CORE_CUH
 
 #include "nw_general.h"
+#include "cuda_error_check.cuh"
 
 __global__ void xs_core_init(
   uint32_t tlen,
@@ -11,23 +12,17 @@ __global__ void xs_core_init(
   int * row1,
   uint8_t * mat
 ) {
-  // Get the global thread index.
-  uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
-  // Initialize left column of backtrack matrix
-  if (g_tx < qlen + 1)
-    mat[g_tx*(tlen+1)] = INS;
-  // Initialize top row of backtrack matrix
-  if (g_tx < tlen + 1)
-    mat[g_tx] = DEL;
-  // Write 0 to the first cell of our transformed matrix row0.
-  if (g_tx == 0) {
+  uint32_t tx = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (tx < tlen + 1)
+    mat[tx] = DEL;
+  if (tx < qlen + 1)
+    mat[tx * (tlen + 1)] = INS;
+  if (tx == 0) {
     row0[0] = 0;
-  mat[0] = 0;
+    mat[0] = 0;
   }
-  // Write g_tx * mis_or_ind to the first and
-  // second cell of the tranformed matrix row1.
-  if (g_tx < 2)
-    row1[g_tx] = mis_or_ind;
+  if (tx < 2)
+    row1[tx] = mis_or_ind;
 }
 
 __global__ void xs_core_comp(
@@ -43,7 +38,7 @@ __global__ void xs_core_comp(
 ) {
   uint32_t tx = threadIdx.x;
   int * rowt = NULL;
-  // __shared__ int smem[1025];
+  // __shared__ int s_row1[1025];
 
   // Kernel management variables, see kernel definiton
   // for comments on what these are used for.
@@ -53,13 +48,10 @@ __global__ void xs_core_comp(
   uint32_t comp_x_off = 1;
 
   // Other variables to help manage the kernel manager variables...
-  bool square_matrix = (qlen == tlen);
   uint32_t max_comp_w_cnt = 0;
   int8_t comp_w_increment = 1;
   uint32_t max_comp_w = qlen < tlen ? qlen : tlen;
-  uint32_t largest_dim = tlen > qlen ? tlen : qlen;
-  uint32_t smallest_dim = tlen < qlen ? tlen : qlen;
-  uint32_t max_comp_w_cnt_max = largest_dim - smallest_dim + 1;
+  uint32_t max_comp_w_cnt_max = tlen - qlen + 1;
 
   // Loop through every wavefront/diagonal.
   for (uint32_t i = 2; i < qlen + tlen + 1; ++i) {
@@ -77,25 +69,33 @@ __global__ void xs_core_comp(
       row2[comp_x_off + comp_w] = i * mis_or_ind;
 
     for (uint32_t j = comp_x_off; j < comp_x_off + comp_w; j += 1024) {
+      uint32_t comp_idx = j + tx;
+
+      // if (comp_idx < comp_x_off + comp_w) {
+      //   if (tx == 0)
+      //     s_row1[tx] = row1[comp_idx - 1];
+      //   s_row1[tx + 1] = row1[comp_idx];
+      // }
 
       __syncthreads();
-      if (j < comp_x_off + comp_w) {
-        int match = row0[tx + j - 1]
-          + cuda_nw_get_sim(q[i - tx + j - 1], t[tx + j - 1]);
-        int ins = row1[tx + j] + mis_or_ind;
-        int del = row1[tx + j - 1] + mis_or_ind;
-        int mat_idx = i - tx + j + (tx + j) * (tlen + 1);
+
+      if (comp_idx < comp_x_off + comp_w) {
+        int match = row0[comp_idx - 1]
+          + cuda_nw_get_sim(q[i - comp_idx - 1], t[comp_idx - 1]);
+        int ins = row1[comp_idx] + mis_or_ind;
+        int del = row1[comp_idx - 1] + mis_or_ind;
+        int ptr_idx = (tlen + 1) * (i - comp_idx) + comp_idx;
         if (match >= ins && match >= del) {
-          row2[tx + j] = match;
-          mat[mat_idx] = MATCH;
+          row2[comp_idx] = match;
+          mat[ptr_idx] = MATCH;
         }
         else if (ins >= match && ins >= del) {
-          row2[tx + j] = ins;
-          mat[mat_idx] = INS;
+          row2[comp_idx] = ins;
+          mat[ptr_idx] = INS;
         }
         else {
-          row2[tx + j] = del;
-          mat[mat_idx] = DEL;
+          row2[comp_idx] = del;
+          mat[ptr_idx] = DEL;
         }
       }
 
@@ -104,11 +104,12 @@ __global__ void xs_core_comp(
     // Update other management variables.
     max_comp_w_cnt = comp_w == max_comp_w ?
       max_comp_w_cnt += 1 : max_comp_w_cnt;
-    if (square_matrix)
+    if (qlen == tlen)
       comp_w_increment = max_comp_w_cnt == 1 ? -1 : 1;
     else
       comp_w_increment = max_comp_w_cnt == 0 ? 1 :
         max_comp_w_cnt == max_comp_w_cnt_max ? -1 : 0;
+
     // Slide our window.
     rowt = row0;
     row0 = row1;
@@ -130,20 +131,20 @@ std::pair<uint8_t *, int> xs_t_geq_q_man(
   // This is useful because with the transformation matrix we get
   // complete memory coalescing on both reads and writes.
   int * row0_d = (int *) mem;
-  int * row1_d = row0_d + (qlen + 1);
-  int * row2_d = row1_d + (qlen + 1);
+  int * row1_d = row0_d + (tlen + 1);
+  int * row2_d = row1_d + (tlen + 1);
 
   // Maintain a full untransformed matrix (of back-pointers) for PCIe transfer after
   // compute is done. This min/maxes our memory utilization.
-  uint8_t * mat_d = (uint8_t *) (row2_d + (qlen + 1));
+  uint8_t * mat_d = (uint8_t *) (row2_d + (tlen + 1));
 
   // Pointers to target and query.
   char * t_d = (char *) (mat_d + (tlen + 1) * (qlen + 1));
   char * q_d = t_d + tlen;
 
   // Copy our target and query to the GPU.
-  cudaMemcpy(t_d, t, tlen * sizeof(char), cudaMemcpyHostToDevice);
-  cudaMemcpy(q_d, q, qlen * sizeof(char), cudaMemcpyHostToDevice);
+  cuda_error_check(cudaMemcpy(t_d, t, tlen * sizeof(char), cudaMemcpyHostToDevice));
+  cuda_error_check(cudaMemcpy(q_d, q, qlen * sizeof(char), cudaMemcpyHostToDevice));
 
   // Prepare the first 2 rows of our transformed compute matrix,
   // and the border elements for our untranformed matrix.
@@ -162,12 +163,14 @@ std::pair<uint8_t *, int> xs_t_geq_q_man(
   // Allocate pinned memory on the host for faster data transfer.
   uint8_t * mat;
   size_t cpu_ptr_mat_bytes = (tlen+1) * (qlen+1) * sizeof(uint8_t);
-  cudaHostAlloc((void**) & mat, cpu_ptr_mat_bytes, cudaHostAllocDefault);
+  cuda_error_check(cudaHostAlloc((void**) & mat, cpu_ptr_mat_bytes, cudaHostAllocDefault));
 
   // Copy back our untransformed matrix to the host.
-  cudaMemcpy(mat, mat_d, cpu_ptr_mat_bytes, cudaMemcpyDeviceToHost);
+  int opt_score = 0;
+  cuda_error_check(cudaMemcpy(mat, mat_d, cpu_ptr_mat_bytes, cudaMemcpyDeviceToHost));
+  cuda_error_check(cudaMemcpy(&opt_score, &row1_d[tlen], sizeof(int), cudaMemcpyDeviceToHost));
 
-  std::pair<uint8_t *, int> res (mat, 0);
+  std::pair<uint8_t *, int> res (mat, opt_score);
   return res;
 }
 

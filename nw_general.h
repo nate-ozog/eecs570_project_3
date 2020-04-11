@@ -72,7 +72,7 @@ std::pair<char *, char *> nw_ptr_backtrack (
   uint32_t j = tlen;
   uint32_t i = qlen;
   while (i > 0 || j > 0) {
-    switch(mat[ij_to_z(i, j, tlen, qlen)]) {
+    switch(mat[i * (tlen + 1) + j]) {
       case MATCH:
         q_algn = q[i-1] + q_algn;
         t_algn = t[j-1] + t_algn;
@@ -90,7 +90,7 @@ std::pair<char *, char *> nw_ptr_backtrack (
         break;
       default:
         std::cout << "ERROR, unexpected back-pointer value: ";
-        std::cout << mat[ij_to_z(i, j, tlen, qlen)] << std::endl;
+        std::cout << mat[i * (tlen + 1) + j] << std::endl;
         std::cout << "i: " << i << "\tj: " << j << std::endl;
         std::cout << "tlen: " << tlen << "\tqlen: " << qlen << std::endl;
         exit(-1);

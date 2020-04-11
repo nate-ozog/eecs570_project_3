@@ -54,7 +54,7 @@ int main() {
   delete [] sim_mat;
 
   // Create N threads.
-  int NUM_THREADS = 16;
+  int NUM_THREADS = 64;
   pthread_t t[NUM_THREADS];
 
   auto start = std::chrono::high_resolution_clock::now();
