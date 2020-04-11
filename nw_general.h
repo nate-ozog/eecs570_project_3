@@ -14,7 +14,7 @@
 
 #define NUM_TEST_FILES 8
 #define GAP_SCORE -1
-#define CEILDIV(A,B) ((A+B-1)/B)
+#define CEILDIV(A,B) (((A)+(B)-1)/(B))
 
 #define MATCH 1
 #define DEL 2
