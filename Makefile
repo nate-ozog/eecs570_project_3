@@ -1,18 +1,22 @@
-CC        = g++
-CFLAGS    = -std=c++11
-NVCC      = nvcc
-CUDA_INC  = -I/usr/local/cuda/include/
-CUDA_LINK = -lcuda
-CPU_SRC = nw.cpp testbatch.cpp
-CPU_HDR = testbatch.hpp
-GPU_SRC = needletail.cu testbatch.cpp
-GPU_HDR = testbatch.hpp needletail_general.hpp needletail.cuh needletail_core.cuh cuda_error_check.cuh
+CC         = g++
+CFLAGS     = -std=c++11
+NVCC       = nvcc
+NVCC_FLAGS = --default-stream per-thread -arch=sm_60 -rdc=true ${CFLAGS}
+CUDA_INC   = -I/usr/local/cuda/include/
+CUDA_LINK  = -lcuda
+CPU_SRC    = nw.cpp testbatch.cpp
+CPU_HDR    = testbatch.hpp
+GPU_SRC    = nw.cu testbatch.cpp
+GPU_HDR    = nw_general.h testbatch.hpp xs.cuh xs_core.cuh cuda_error_check.cuh
 
 gpu_nw: $(GPU_SRC) $(GPU_HDR)
-  $(NVCC) $(CFLAGS) $(GPU_SRC) -o $@.o $(CUDA_LINK)
+	$(NVCC) $(NVCC_FLAGS) $(GPU_SRC) -o $@.o $(CUDA_LINK)
 
 base_nw: $(CPU_SRC) $(CPU_HDR)
-  $(CC) $(CFLAGS) $(CPU_SRC) -o $@.o $(CUDA_INC)
+	$(CC) $(CFLAGS) $(CPU_SRC) -o $@.o $(CUDA_INC)
+
+batchgen: batchgen.cpp aligngen.cpp aligngen.hpp
+	$(CC) -std=c++11 batchgen.cpp aligngen.cpp -o $@.o
 
 clean:
-  rm -rf *.o
+	rm -rf *.o

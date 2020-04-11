@@ -230,7 +230,13 @@ bool TestBatch::load_batch( const char * const filename ) {
   //  cout << i << endl;
 
   // Pre-allocate vector entries for the result strings (2 per test)
-  result_strings.reserve( tests.size() * 2 );
+  result_strings.resize( tests.size() * 2, "" );
+
+  // Reference the result strings by index
+  for ( int i = 0; i < tests.size(); i++ ) {
+    tests[i].s1_align_idx = i * 2;
+    tests[i].s2_align_idx = i * 2 + 1;
+  }
 
   // Batch imported from file without any errors
   return true;
@@ -244,7 +250,6 @@ void TestBatch::clear() {
 
   // Re-initialize member variables
   test_strings.push_back("");
-  result_strings.push_back("");
   next_idx = 0;
   for ( int i = 0; i < 16; i++ )
     matrix[i] = 0;
@@ -256,17 +261,19 @@ int TestBatch::count() {
 }
 
 bool TestBatch::next_test( Test_t &out ) {
+  // Atomically fetch the next test's index and increment the counter
+  int curr_idx = __atomic_fetch_add( &next_idx, 1, __ATOMIC_RELAXED );
+
   // If at the end of the test vector, no more tests available
-  if ( next_idx >= tests.size() )
+  if ( curr_idx >= tests.size() )
     return false;
 
-  out.id     = next_idx;
-  out.s1     = test_strings[ tests[next_idx].s1_idx ].c_str();
-  out.s1_len = test_strings[ tests[next_idx].s1_idx ].length();
-  out.s2     = test_strings[ tests[next_idx].s2_idx ].c_str();
-  out.s2_len = test_strings[ tests[next_idx].s2_idx ].length();
+  out.id     = curr_idx;
+  out.s1     = test_strings[ tests[curr_idx].s1_idx ].c_str();
+  out.s1_len = test_strings[ tests[curr_idx].s1_idx ].length();
+  out.s2     = test_strings[ tests[curr_idx].s2_idx ].c_str();
+  out.s2_len = test_strings[ tests[curr_idx].s2_idx ].length();
 
-  next_idx++;
   return true;
 }
 
@@ -304,17 +311,9 @@ bool TestBatch::log_result( const int id,    const char * const s1_align, const 
   if ( id >= tests.size() )
     return false;
 
-  // If this test already has result strings, they will stay in the vector.
-  // This function should only be called once per test, and removing individual strings
-  // from the vector will invalidate other tests' reference indices (could use a list).
-
   // Keep a copy of both aligned strings
-  result_strings.push_back( s1_align );
-  result_strings.push_back( s2_align );
-
-  // Reference the aligned strings
-  tests[id].s1_align_idx = result_strings.size() - 2;
-  tests[id].s2_align_idx = result_strings.size() - 1;
+  result_strings[ tests[id].s1_align_idx ] = s1_align;
+  result_strings[ tests[id].s2_align_idx ] = s2_align;
 
   // Update the test score and time
   tests[id].score = score;
@@ -328,7 +327,7 @@ void TestBatch::set_matrix( const signed char * const new_matrix ) {
     matrix[i] = new_matrix[i];
 }
 
-void TestBatch::set_gapscore( const int new_gap_score ) {
+void TestBatch::set_gapscore( const signed char new_gap_score ) {
   gap_score = new_gap_score;
 }
 
@@ -352,12 +351,12 @@ bool TestBatch::save_results( const char * const filename ) {
   // Write the similarity matrix
   fout << "m= ";
   for ( int i = 0; i < 15; i++ ) {
-    fout << matrix[i] << ",";
+    fout << (int)matrix[i] << ",";
   }
-  fout << matrix[15] << "\n";
+  fout << (int)matrix[15] << "\n";
 
   // Write the gap score
-  fout << "g= " << gap_score << "\n\n";
+  fout << "g= " << (int)gap_score << "\n\n";
 
   // Write the results for each test
   for ( int i = 0; i < tests.size(); i++ ) {
