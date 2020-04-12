@@ -2,9 +2,9 @@
 #define NEEDLETAIL_THREADS_CUH
 
 #include "nw_general.h"
-#include "testbatch.hpp"
 #include "cuda_error_check.cuh"
 #include "needletail_kernels.cuh"
+#include "pools.h"
 
 std::mutex mtx;
 
@@ -19,67 +19,93 @@ struct stream_args {
   char * q_d;
 };
 
-void needletail_stream_batch (
-  uint32_t batch_size,
-  bool * swap_t_q,
-  Test_t * tests
+std::pair<char *, char *> needletail_stream_single (
+  const char *t,
+  const char *q,
+  uint32_t tlen,
+  uint32_t qlen,
+  signed char mis_or_ind,
+  bool swap_t_q
 ) {
+  std::pair<char *, char *> algn;
+  cudaStream_t stream;
+  uint64_t device_mem_bytes;
+  uint64_t host_mem_bytes;
+  void     *device_mem_ptr = NULL;
+  uint8_t  *host_mem_ptr   = NULL;
+  int      *row0_d;
+  int      *row1_d;
+  int      *row2_d;
+  uint8_t  *mat_d;
+  char     *t_d;
+  char     *q_d;
 
-  // Create an array of stream arguments and streams.
-  stream_args s_args[batch_size];
-  cudaStream_t s[batch_size];
+  cudaStreamCreate( &stream );
 
-  // Grab the scheduling lock.
-  mtx.lock();
+  // Compute allocation sizes
+  device_mem_bytes  = 3 * (tlen + 1) * sizeof(int);
+  device_mem_bytes += (tlen + 1) * (qlen + 1) * sizeof(int);
+  device_mem_bytes += tlen * sizeof(char);
+  device_mem_bytes += qlen * sizeof(char);
+  host_mem_bytes    = (tlen + 1) * (qlen + 1) * sizeof(uint8_t);
 
-  // Create the streams, claim GPU memory, and setup arguments.
-  for (size_t i = 0; i < batch_size; ++i) {
-    cudaStreamCreate(&s[i]);
-    uint32_t tlen = tests[i].s1_len;
-    uint32_t qlen = tests[i].s2_len;
-    uint64_t num_GPU_mem_bytes = 3 * (tlen + 1) * sizeof(int);
-    num_GPU_mem_bytes += (tlen + 1) * (qlen + 1) * sizeof(uint8_t);
-    num_GPU_mem_bytes += tlen * sizeof(char);
-    num_GPU_mem_bytes += qlen * sizeof(char);
-    size_t free = 0, total = 0;
-    while (free < 2 * num_GPU_mem_bytes)
-      cudaMemGetInfo(&free, &total);
-    cudaMalloc((void **) & s_args[i].mem, num_GPU_mem_bytes);
-    cudaHostAlloc((void**)& s_args[i].mat, (tlen+1) * (qlen+1) * sizeof(uint8_t), cudaHostAllocDefault);
-    s_args[i].row0_d = (int *) s_args[i].mem;
-    s_args[i].row1_d = s_args[i].row0_d + (tlen + 1);
-    s_args[i].row2_d = s_args[i].row1_d + (tlen + 1);
-    s_args[i].mat_d = (uint8_t *) (s_args[i].row2_d + (tlen + 1));
-    s_args[i].t_d = (char *) (s_args[i].mat_d + (tlen + 1) * (qlen + 1));
-    s_args[i].q_d = s_args[i].t_d + tlen;
-  }
+  // Allocate memory
+  pthread_mutex_lock( &device_pool_lock );
+  device_mem_ptr = device_pool.malloc( device_mem_bytes );
+  //device_pool.print_pool();
+  pthread_mutex_unlock( &device_pool_lock );
 
-  // Launch depth first kernel streams.
-  for (size_t i = 0; i < batch_size; ++i) {
-    cudaMemcpyAsync(s_args[i].t_d, tests[i].s1, tests[i].s1_len * sizeof(char), cudaMemcpyHostToDevice, s[i]);
-    cudaMemcpyAsync(s_args[i].q_d, tests[i].s2, tests[i].s2_len * sizeof(char), cudaMemcpyHostToDevice, s[i]);
-    needletail_init_kernel <<< divide_then_round_up((tests[i].s1_len + 1), BLOCK_SIZE), BLOCK_SIZE, 0, s[i] >>>
-        (tests[i].s1_len, tests[i].s2_len, GAP_SCORE, s_args[i].row0_d, s_args[i].row1_d, s_args[i].mat_d);
-    needletail_comp_kernel <<< 1, BLOCK_SIZE, 0, s[i] >>>
-      (s_args[i].t_d, s_args[i].q_d, tests[i].s1_len, tests[i].s2_len, GAP_SCORE,
-        s_args[i].row0_d, s_args[i].row1_d, s_args[i].row2_d, s_args[i].mat_d);
-    cudaMemcpyAsync(s_args[i].mat, s_args[i].mat_d, (tests[i].s1_len + 1) * (tests[i].s2_len + 1) * sizeof(uint8_t), cudaMemcpyDeviceToHost, s[i]);
-  }
+  pthread_mutex_lock( &host_pool_lock );
+  host_mem_ptr = (uint8_t*) host_pool.malloc( host_mem_bytes );
+  pthread_mutex_unlock( &host_pool_lock );
 
-  // Release the scheduling lock.
-  mtx.unlock();
+  //cudaMalloc( &device_mem_ptr, device_mem_bytes );
+  //cudaHostAlloc( &host_mem_ptr, host_mem_bytes, cudaHostAllocDefault );
 
-  for (size_t i = 0; i < batch_size; ++i) {
-    cudaStreamSynchronize(s[i]);
-    cudaFree(s_args[i].mem);
-    cudaStreamDestroy(s[i]);
-    std::pair<char *, char *> algn = nw_ptr_backtrack(s_args[i].mat,
-      swap_t_q[i], tests[i].s1, tests[i].s2, tests[i].s1_len, tests[i].s2_len);
-    cudaFreeHost(s_args[i].mat);
-    test_batch.log_result(tests[i].id, algn.first, algn.second, 0, 0);
-  }
+  // Compute argument addresses
+  row0_d = (int *) device_mem_ptr;
+  row1_d = row0_d + (tlen + 1);
+  row2_d = row1_d + (tlen + 1);
+  mat_d  = (uint8_t *) (row2_d + (tlen + 1));
+  t_d    = (char *) (mat_d + (tlen + 1) * (qlen + 1));
+  q_d    = t_d + tlen;
 
-  return;
+  // Schedule host to device memory copies
+  cudaMemcpyAsync( t_d, t, tlen * sizeof(char), cudaMemcpyHostToDevice, stream );
+  cudaMemcpyAsync( q_d, q, qlen * sizeof(char), cudaMemcpyHostToDevice, stream );
+
+  // Schedule kernel launches
+  needletail_init_kernel <<< divide_then_round_up((tlen + 1), BLOCK_SIZE), BLOCK_SIZE, 0,  stream >>>
+      (tlen, qlen, mis_or_ind, row0_d, row1_d, mat_d);
+  needletail_comp_kernel <<< 1, BLOCK_SIZE, 0,  stream >>>
+    (t_d, q_d, tlen, qlen, mis_or_ind, row0_d, row1_d, row2_d, mat_d);
+
+  // Schedule device to host memory copy
+  cudaMemcpyAsync( host_mem_ptr, mat_d, (tlen + 1) * (qlen + 1) * sizeof(uint8_t), cudaMemcpyDeviceToHost, stream );
+
+  // Synchronize with stream and start cleanup
+  cudaStreamSynchronize( stream );
+
+  pthread_mutex_lock( &device_pool_lock );
+  device_pool.free( device_mem_ptr );
+  pthread_mutex_unlock( &device_pool_lock );
+
+  //cudaFree( device_mem_ptr );
+  cudaStreamDestroy( stream );
+
+  // Backtrack using the matrix in host memory
+  algn = nw_ptr_backtrack( host_mem_ptr, swap_t_q, t, q, tlen, qlen );
+
+  // Free the host memory
+
+  pthread_mutex_lock( &host_pool_lock );
+  host_pool.free( host_mem_ptr );
+  pthread_mutex_unlock( &host_pool_lock );
+
+  //cudaFreeHost( host_mem_ptr );
+
+  // Return the aligned strings
+  return algn;
 }
 
 #endif

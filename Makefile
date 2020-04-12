@@ -5,8 +5,8 @@ NVCC_FLAGS = --default-stream per-thread -arch=sm_60 -rdc=true ${CFLAGS}
 CUDA_INC   = -I/usr/local/cuda/include/
 CUDA_LINK  = -lcuda
 CPU_SRC    = nw.cpp testbatch.cpp
-CPU_HDR    = testbatch.hpp
-GPU_SRC    = needletail.cu testbatch.cpp
+CPU_HDR    = testbatch.hpp poolman.h
+GPU_SRC    = needletail.cu testbatch.cpp poolman.cpp
 GPU_HDR    = nw_general.h testbatch.hpp needletail_kernels.cuh needletail_threads.cuh cuda_error_check.cuh
 
 gpu_nw: $(GPU_SRC) $(GPU_HDR)
