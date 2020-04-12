@@ -19,14 +19,9 @@
 #define MATCH             1
 #define DEL               2
 #define INS               3
-#define NUM_THREADS       16
+#define NUM_THREADS       12
 #define STREAM_BATCH_SIZE 32
 #define BLOCK_SIZE        1024
-
-#define DEVICE_POOL_BYTES 1610612736
-#define DEVICE_POOL_ALIGN 9               // 2^9 = 512
-#define   HOST_POOL_BYTES 1610612736
-#define   HOST_POOL_ALIGN 9               // 2^9 = 512
 
 __constant__ signed char c_s[16];
 extern TestBatch test_batch;

@@ -1,14 +1,9 @@
 #include "nw_general.h"
 #include "needletail_threads.cuh"
 #include "testbatch.hpp"
-#include "pools.h"
 #include <pthread.h>
 
 TestBatch test_batch("batch.txt");
-pthread_mutex_t device_pool_lock;
-PoolMan device_pool;
-pthread_mutex_t host_pool_lock;
-PoolMan host_pool;
 
 // Reads in the similarity matrix file into GPU constant memory.
 signed char * init_similarity_matrix() {
@@ -27,31 +22,26 @@ signed char * init_similarity_matrix() {
 
 // Worker thread function.
 void * worker(void * arg) {
-  Test_t test;
-  bool swap_t_q;
-  std::pair<char *, char *> algn;
-  std::chrono::high_resolution_clock::time_point start, end;
-
-  while ( test_batch.next_test( test ) ) {
-
-    swap_t_q = test.s2_len > test.s1_len;
-    if ( swap_t_q ) {
-      std::swap(test.s1,     test.s2);
-      std::swap(test.s1_len, test.s2_len);
+  Test_t tests[STREAM_BATCH_SIZE];
+  bool swap_t_q[STREAM_BATCH_SIZE];
+  uint32_t batch_cnt = 0;
+  // Loop until all tests are done.
+  while (test_batch.next_test(tests[batch_cnt])) {
+    swap_t_q[batch_cnt] = tests[batch_cnt].s2_len > tests[batch_cnt].s1_len;
+    if (swap_t_q[batch_cnt]) {
+      std::swap(tests[batch_cnt].s1, tests[batch_cnt].s2);
+      std::swap(tests[batch_cnt].s1_len, tests[batch_cnt].s2_len);
     }
-
-    start = std::chrono::high_resolution_clock::now();
-    //algn = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
-
-    algn = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
-
-    end = std::chrono::high_resolution_clock::now();
-
-    test_batch.log_result( test.id, algn.first, algn.second, 0,
-                           std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() );
-    delete [] algn.first;
-    delete [] algn.second;
+    ++batch_cnt;
+    // If we have a batch ready to go.
+    if (batch_cnt == STREAM_BATCH_SIZE) {
+      needletail_stream_batch(batch_cnt, swap_t_q, tests);
+      batch_cnt = 0;
+    }
   }
+  // If we ran out of tests but still have not a full batch ready.
+  if (batch_cnt != 0)
+    needletail_stream_batch(batch_cnt, swap_t_q, tests);
   return NULL;
 }
 
@@ -64,34 +54,14 @@ int main() {
   delete [] sim_mat;
 
   pthread_t t[NUM_THREADS];
-  void *device_pool_ptr = NULL;
-  void *host_pool_ptr   = NULL;
-
-  // Allocate the memory pools
-  cuda_error_check( cudaMalloc( &device_pool_ptr, DEVICE_POOL_BYTES ) );
-  cuda_error_check( cudaHostAlloc( &host_pool_ptr, HOST_POOL_BYTES, cudaHostAllocDefault ) );
-
-  // Initialize the pool managers
-  device_pool.init( device_pool_ptr, DEVICE_POOL_BYTES, DEVICE_POOL_ALIGN );
-  pthread_mutex_init( &device_pool_lock, NULL );
-  host_pool.init( host_pool_ptr, HOST_POOL_BYTES, HOST_POOL_ALIGN );
-  pthread_mutex_init( &host_pool_lock, NULL );
-
   auto start = std::chrono::high_resolution_clock::now();
-
   // Launch the worker threads
-  for ( uint32_t i = 0; i < NUM_THREADS; i++)
-    pthread_create( &t[i], NULL, worker, NULL );
-
+  for (uint32_t i = 0; i < NUM_THREADS; i++)
+    pthread_create(&t[i], NULL, worker, NULL);
   // Join the worker threads
-  for ( uint32_t i = 0; i < NUM_THREADS; i++ )
-    pthread_join( t[i], NULL );
-
+  for (uint32_t i = 0; i < NUM_THREADS; i++)
+    pthread_join(t[i], NULL);
   auto finish = std::chrono::high_resolution_clock::now();
-
-  // Free the memory pools
-  cuda_error_check( cudaFree( device_pool_ptr ) );
-  cuda_error_check( cudaFreeHost( host_pool_ptr ) );
 
   // Write results and terminate.
   auto total_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
