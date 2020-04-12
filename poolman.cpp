@@ -2,42 +2,36 @@
 
 using namespace std;
 
-
-
-PoolMan::PoolMan( void *pool, uint64_t size, uint32_t align_pow ) {
-  init( pool, size, align_pow );
+PoolMan::PoolMan( uint32_t align_pow ) {
+  align_pow_   = align_pow;
+  free_bytes_  = 0;
+  total_bytes_ = 0;
+  peak_bytes_  = 0;
 }
 
-bool PoolMan::init( void *pool, uint64_t size, uint32_t align_pow ) {
+void PoolMan::add_pool( void *pool, uint64_t size ) {
   uintptr_t temp;
-  uintptr_t base;
-
-  // Prevent re-initialization
-  if ( !free_size_.empty() || !allocs_.empty() )
-    return false;
-
-  base       = (uintptr_t) pool;
-  align_pow_ = align_pow;
+  uintptr_t base = (uintptr_t) pool;
 
   // Get base % 2^align_pow
   temp = base & ( ( 1 << align_pow_ ) - 1 );
 
   // If the pool isn't aligned, round up to the nearest aligned value
-  // Update the recorded pool size to reflect this change
+  // Update the pool size to reflect this change
   if ( temp != 0 ) {
     base += ( 1 << align_pow_ ) - temp;
     size -= ( 1 << align_pow_ ) - temp;
   }
 
-  // Align size by rounding down to the nearest aligned value
+  // Align the size by rounding down to the nearest aligned value
   size &= ~( ( 1 << align_pow_ ) - 1 );
 
-  // Initialize the free maps by adding the entire (aligned) pool
+  // Add the (aligned) pool to the free maps to start using it
+  // TODO? Merge address-adjacent pools
   free_size_.insert( pair<uint64_t,uintptr_t>( size, base ) );
-  free_addr_[base] = size;
-  free_bytes_      = size;
-
-  return true;
+  free_addr_[base]  = size;
+  free_bytes_      += size;
+  total_bytes_     += size;
 }
 
 void *PoolMan::malloc( uint64_t size ) {
@@ -79,6 +73,23 @@ void *PoolMan::malloc( uint64_t size ) {
       free_size_.insert( pair<uint64_t,uintptr_t>( segment_size - size, segment_addr + size ) );
       free_addr_[ segment_addr + size ] = segment_size - size;
     }
+  }
+
+  // Update the peak counter, if necessary
+  if ( total_bytes_ - free_bytes_ > peak_bytes_ )
+    peak_bytes_ = total_bytes_ - free_bytes_;
+
+  // Dump some stats and exit if returning NULL
+  // TODO: Have the caller wait for space instead of this
+  if ( result == NULL ) {
+    cerr << "PoolMan::malloc returning NULL\n";
+    cerr << " Requested Size B: " << size << "\n";
+    cerr << "           Free B: " << free_bytes_ << "\n";
+    cerr << "          Total B: " << total_bytes_ << "\n";
+    cerr << "Max Avail. Seg. B: " << get_max_malloc_bytes() << "\n";
+    cerr << "      Alloc Count: " << get_alloc_count() << "\n";
+    cerr << "       Free Count: " << get_free_count()  << "\n";
+    exit(-2);
   }
 
   return result;
@@ -148,13 +159,11 @@ void PoolMan::free( void *ptr ) {
   free_size_.insert( pair<uint64_t,uintptr_t>( size, addr ) );
 }
 
-uint64_t PoolMan::get_free_bytes() {
-  return free_bytes_;
-}
+uint64_t PoolMan::get_free_bytes()  { return free_bytes_;       }
 
-uint32_t PoolMan::get_free_count() {
-  return free_size_.size();
-}
+uint64_t PoolMan::get_total_bytes() { return total_bytes_;      }
+
+uint32_t PoolMan::get_free_count()  { return free_size_.size(); }
 
 uint64_t PoolMan::get_max_malloc_bytes() {
   if ( !free_size_.empty() )
@@ -163,9 +172,9 @@ uint64_t PoolMan::get_max_malloc_bytes() {
     return 0;
 }
 
-uint32_t PoolMan::get_alloc_count() {
-  return allocs_.size();
-}
+uint32_t PoolMan::get_alloc_count() { return allocs_.size();    }
+
+uint64_t PoolMan::get_peak_bytes()  { return peak_bytes_;       }
 
 void PoolMan::print_pool() {
 

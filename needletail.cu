@@ -6,9 +6,9 @@
 
 TestBatch test_batch("batch.txt");
 pthread_mutex_t device_pool_lock;
-PoolMan device_pool;
+PoolMan         device_pool(DEVICE_POOL_ALIGN_POW);
 pthread_mutex_t host_pool_lock;
-PoolMan host_pool;
+PoolMan         host_pool  (HOST_POOL_ALIGN_POW);
 
 // Reads in the similarity matrix file into GPU constant memory.
 signed char * init_similarity_matrix() {
@@ -33,7 +33,6 @@ void * worker(void * arg) {
   std::chrono::high_resolution_clock::time_point start, end;
 
   while ( test_batch.next_test( test ) ) {
-
     swap_t_q = test.s2_len > test.s1_len;
     if ( swap_t_q ) {
       std::swap(test.s1,     test.s2);
@@ -41,10 +40,7 @@ void * worker(void * arg) {
     }
 
     start = std::chrono::high_resolution_clock::now();
-    //algn = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
-
     algn = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
-
     end = std::chrono::high_resolution_clock::now();
 
     test_batch.log_result( test.id, algn.first, algn.second, 0,
@@ -64,18 +60,22 @@ int main() {
   delete [] sim_mat;
 
   pthread_t t[NUM_THREADS];
-  void *device_pool_ptr = NULL;
-  void *host_pool_ptr   = NULL;
+  void *device_pool_ptrs[DEVICE_POOL_ALLOC_COUNT] = {0};
+  void   *host_pool_ptrs[  HOST_POOL_ALLOC_COUNT] = {0};
 
   // Allocate the memory pools
-  cuda_error_check( cudaMalloc( &device_pool_ptr, DEVICE_POOL_BYTES ) );
-  cuda_error_check( cudaHostAlloc( &host_pool_ptr, HOST_POOL_BYTES, cudaHostAllocDefault ) );
+  for ( int i = 0; i < DEVICE_POOL_ALLOC_COUNT; i++ ) {
+    cuda_error_check( cudaMalloc( &device_pool_ptrs[i], DEVICE_POOL_ALLOC_BYTES ) );
+    device_pool.add_pool( device_pool_ptrs[i], DEVICE_POOL_ALLOC_BYTES );
+  }
+  for ( int i = 0; i < HOST_POOL_ALLOC_COUNT; i++ ) {
+    cuda_error_check( cudaHostAlloc( &host_pool_ptrs[i], HOST_POOL_ALLOC_BYTES, cudaHostAllocDefault ) );
+    host_pool.add_pool( host_pool_ptrs[i], HOST_POOL_ALLOC_BYTES );
+  }
 
-  // Initialize the pool managers
-  device_pool.init( device_pool_ptr, DEVICE_POOL_BYTES, DEVICE_POOL_ALIGN );
+  // Initialize the pool mutexes
   pthread_mutex_init( &device_pool_lock, NULL );
-  host_pool.init( host_pool_ptr, HOST_POOL_BYTES, HOST_POOL_ALIGN );
-  pthread_mutex_init( &host_pool_lock, NULL );
+  pthread_mutex_init(   &host_pool_lock, NULL );
 
   auto start = std::chrono::high_resolution_clock::now();
 
@@ -90,8 +90,18 @@ int main() {
   auto finish = std::chrono::high_resolution_clock::now();
 
   // Free the memory pools
-  cuda_error_check( cudaFree( device_pool_ptr ) );
-  cuda_error_check( cudaFreeHost( host_pool_ptr ) );
+  for ( int i = 0; i < DEVICE_POOL_ALLOC_COUNT; i++ ) {
+    cuda_error_check( cudaFree( device_pool_ptrs[i] ) );
+  }
+  for ( int i = 0; i < HOST_POOL_ALLOC_COUNT; i++ ) {
+    cuda_error_check( cudaFreeHost( host_pool_ptrs[i] ) );
+  }
+
+  // Print peak pool usages
+  std::cout << "Device pool peak B: " << device_pool.get_peak_bytes()  << "\n";
+  std::cout << "            size B: " << device_pool.get_total_bytes() << "\n";
+  std::cout << "  Host pool peak B: " <<   host_pool.get_peak_bytes()  << "\n";
+  std::cout << "            size B: " <<   host_pool.get_total_bytes() << std::endl;
 
   // Write results and terminate.
   auto total_runtime = std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
