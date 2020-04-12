@@ -12,16 +12,20 @@
 #include <mutex>
 #include "cuda.h"
 #include "cuda_runtime.h"
+#include "testbatch.hpp"
 
-#define SIM_MAT_PATH "similarity.txt"
-#define GAP_SCORE    -1
-#define MATCH        1
-#define DEL          2
-#define INS          3
-#define NUM_HW_QS    32
-#define BLOCK_SIZE   1024
+#define SIM_MAT_PATH          "similarity.txt"
+#define GAP_SCORE             -1
+#define MATCH                  1
+#define DEL                    2
+#define INS                    3
+#define MAX_OUSTANDING_BATCHES 32
+#define STREAM_BATCH_SIZE      32
+#define BLOCK_SIZE             1024
 
 __constant__ signed char c_s[16];
+extern volatile uint32_t oustanding_batches;
+extern TestBatch test_batch;
 
 __device__ signed char cuda_base_to_val(char B) {
   // Assume 'A' unless proven otherwise.

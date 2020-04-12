@@ -6,8 +6,8 @@ CUDA_INC   = -I/usr/local/cuda/include/
 CUDA_LINK  = -lcuda
 CPU_SRC    = nw.cpp testbatch.cpp
 CPU_HDR    = testbatch.hpp
-GPU_SRC    = nw.cu testbatch.cpp
-GPU_HDR    = nw_general.h testbatch.hpp xs.cuh cuda_error_check.cuh
+GPU_SRC    = needletail.cu testbatch.cpp
+GPU_HDR    = nw_general.h testbatch.hpp needletail_kernels.cuh needletail_threads.cuh cuda_error_check.cuh
 
 gpu_nw: $(GPU_SRC) $(GPU_HDR)
 	$(NVCC) $(NVCC_FLAGS) $(GPU_SRC) -o $@.o $(CUDA_LINK)
