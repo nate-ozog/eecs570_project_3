@@ -40,21 +40,22 @@ __global__ void xs_core_comp(
 	signed char mis_or_ind,
 	uint8_t * mat
 ) {
+	// Shorthand thread index and block dimensions.
+	uint32_t tidx = threadIdx.x;
+	uint32_t bdim = blockDim.x;
+
 	// Set up shared memory row pointers.
 	extern __shared__ int smem[];
 	int * s_row0 = smem;
-	int * s_row1 = s_row0 + (blockDim.x+1)*max_strides;
-	int * s_row2 = s_row1 + (blockDim.x+1)*max_strides;
+	int * s_row1 = s_row0 + (bdim+1)*max_strides;
+	int * s_row2 = s_row1 + (bdim+1)*max_strides;
 	int * s_temp = NULL;
 
-	// Shorthand thread index.
-	uint32_t tidx = threadIdx.x;
-
-	// Initialize Shared Memory (top two rows of sheared matrix).
+	// Initialize Shared Memory (top two rows of sheared matrix section).
 	if (tidx == 0) {
-		s_row0[0] = col[col_offset-1];
-		s_row1[0] = col[col_offset];
-		s_row1[1] = col_offset * mis_or_ind;
+		s_row0[0] = col[col_offset-1];		 // on diag, optimize later
+		s_row1[0] = col[col_offset];		 // passed from previous kernel
+		s_row1[1] = col_offset * mis_or_ind; // always on diag
 	}
 	__syncthreads();
 
@@ -70,27 +71,32 @@ __global__ void xs_core_comp(
 		else
 			band_width = qlen+tlen+1 - row_idx;
 
-		// Calculate offset based on row in sheared matrix.
-		uint32_t row_offset = row_idx <= tlen ? 0 : row_idx-tlen;
+		// Calculate offset based on kernel and row in sheared matrix.
+		// col_offset = due to kernel starting column in full matrix
+		// row_offset = due to diagonalization past row tlen
+		uint32_t row_offset = row_idx <= tlen ? 0 : row_idx - (tlen+1);
 		uint32_t offset = row_offset + col_offset;
 
-		// Set Shared Memory (leftmost col and diag of current row).
+		// Set Shared Memory.
 		if (tidx == 0) {
+			// leftmost col passed in from previous kernel
 			s_row2[0] = col[row_idx];
-			if (row_idx <= qlen) {
+			// check that we're responsible for computing diagonal element
+			if (row_idx <= qlen && row_idx < col_offset+bdim*max_strides) {
 				s_row2[row_idx-col_offset+1] = row_idx * mis_or_ind;
 			}
 		}
 
-		// Stride across columns, taking offsets into account
+		// Stride across columns, taking offsets into account.
 		for (uint32_t col_idx = 0; 
-				col_idx < band_width-col_offset+1 && 
-				col_idx < max_strides*blockDim.x; 
-				col_idx += blockDim.x) {
+				// +1 because leftmost matrix col was for init, not computed
+				col_idx < band_width-col_offset+1 &&
+				col_idx < max_strides*bdim; 
+				col_idx += bdim) {
 
 			// Calculate global and local indices for current thread.
 			uint32_t gidx = col_idx + offset + tidx;
-			uint32_t lidx = col_idx + tidx;
+			uint32_t lidx = col_idx + row_offset + tidx;
 
 			// Do the NW cell calculation.
 			if (gidx < band_width) {
@@ -103,19 +109,19 @@ __global__ void xs_core_comp(
 				if (match >= ins && match >= del) {
 					s_row2[lidx] = match;
 					mat[mat_idx] = MATCH;
-					if (tidx == blockIdx.x - 1)
+					if (lidx == bdim*max_strides - 1)
 						col[row_idx] = match;
 				}
 				else if (ins >= match && ins >= del) {
 					s_row2[lidx] = ins;
 					mat[mat_idx] = INS;
-					if (tidx == blockIdx.x - 1)
+					if (lidx == bdim*max_strides - 1)
 						col[row_idx] = ins;
 				}
 				else {
 					s_row2[lidx] = del;
 					mat[mat_idx] = DEL;
-					if (tidx == blockIdx.x - 1)
+					if (lidx == bdim*max_strides - 1)
 						col[row_idx] = del;
 				}
 			}
@@ -141,7 +147,7 @@ uint8_t * xs_t_geq_q_man(
   cudaStream_t * stream
 ) {
 
-  // Save last column that the kernel computes
+  // Save last column that the kernel computes, and initialize.
   int * col = new int [tlen+qlen+1];
   for(int i = 0; i < tlen+qlen+1; i++)
 	  col[i] = i * mis_or_ind;
