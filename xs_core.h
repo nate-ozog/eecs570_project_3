@@ -62,66 +62,51 @@ __global__ void xs_core_comp(
 	// Loop through every row that has useful work.
 	for (uint32_t row_idx = col_offset+1; row_idx < qlen+tlen+1; row_idx++) {
 
-		// Calculate full sheared matrix band width based on row.
-		uint32_t band_width;
-		if (row_idx <= qlen)
-			band_width = row_idx - 1;
-		else if (row_idx <= tlen)
-			band_width = qlen;
-		else
-			band_width = qlen+tlen+1 - row_idx;
-
-		// Calculate offset based on kernel and row in sheared matrix.
-		// col_offset = due to kernel starting column in full matrix
-		// row_offset = due to diagonalization past row tlen
+		// Calculate row offset, due to diagonalization past row tlen.
 		uint32_t row_offset = row_idx <= tlen ? 0 : row_idx - (tlen+1);
-		uint32_t offset = row_offset + col_offset;
 
-		// Set Shared Memory.
+		// Calculate last column computed by kernel (local and global).
+		uint32_t last_gcol = min(qlen, col_offset+max_strides*bdim-1);
+		uint32_t last_lcol = min(max_strides*bdim-1, last_gcol-col_offset);
+
+		// Set Shared Memory values for leftmost column and diagonal
 		if (tidx == 0) {
-			// leftmost col passed in from previous kernel
 			s_row2[0] = col[row_idx];
-			// check that we're responsible for computing diagonal element
-			if (row_idx <= qlen && row_idx < col_offset+bdim*max_strides) {
+			if (row_idx <= last_gcol)
 				s_row2[row_idx-col_offset+1] = row_idx * mis_or_ind;
-			}
 		}
 
-		// Stride across columns, taking offsets into account.
-		for (uint32_t col_idx = 0; 
-				// +1 because leftmost matrix col was for init, not computed
-				col_idx < band_width-col_offset+1 &&
-				col_idx < max_strides*bdim; 
-				col_idx += bdim) {
+		// Stride across columns.
+		for (uint32_t col_idx = 0; col_idx <= last_lcol; col_idx += bdim) {
 
 			// Calculate global and local indices for current thread.
-			uint32_t gidx = col_idx + offset + tidx;
-			uint32_t lidx = col_idx + row_offset + tidx;
+			uint32_t gidx = col_offset + col_idx + tidx;
+			uint32_t lidx = col_idx + tidx;
 
 			// Do the NW cell calculation.
-			if (gidx < band_width) {
-				int match = s_row0[lidx-1] + cuda_nw_get_sim(q[gidx-1], t[row_idx-gidx-1]);
-				int del = s_row1[lidx] + mis_or_ind;
-				int ins = s_row1[lidx-1] + mis_or_ind;
+			if (gidx > row_offset && gidx <= last_gcol) {
+				int match = s_row0[lidx] + cuda_nw_get_sim(q[gidx-1], t[row_idx-gidx-1]);
+				int del = s_row1[lidx+1] + mis_or_ind;
+				int ins = s_row1[lidx] + mis_or_ind;
 
 				// Write back to our current sliding window row index, set pointer.
 				int mat_idx = row_idx-gidx + gidx*(tlen+1);
 				if (match >= ins && match >= del) {
-					s_row2[lidx] = match;
+					s_row2[lidx+1] = match;
 					mat[mat_idx] = MATCH;
-					if (lidx == bdim*max_strides - 1)
+					if (lidx == last_lcol)
 						col[row_idx] = match;
 				}
 				else if (ins >= match && ins >= del) {
-					s_row2[lidx] = ins;
+					s_row2[lidx+1] = ins;
 					mat[mat_idx] = INS;
-					if (lidx == bdim*max_strides - 1)
+					if (lidx == last_lcol)
 						col[row_idx] = ins;
 				}
 				else {
-					s_row2[lidx] = del;
+					s_row2[lidx+1] = del;
 					mat[mat_idx] = DEL;
-					if (lidx == bdim*max_strides - 1)
+					if (lidx == last_lcol)
 						col[row_idx] = del;
 				}
 			}
