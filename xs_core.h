@@ -10,21 +10,28 @@ __global__ void xs_core_init(
   signed char mis_or_ind,
   uint8_t * mat
 ) {
+	// Get the global thread index.
+	uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
-  // Get the global thread index.
-  uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
+	// Initialize left column of backtrack matrix
+	if (g_tx <= qlen) {
+		uint32_t left_col_idx = (g_tx * (g_tx + 1)) / 2;
+		mat[left_col_idx] = INS;
+	}
 
-  // Initialize left column of backtrack matrix
-  if (g_tx < qlen + 1)
-    mat[g_tx*(tlen+1)] = INS;
+	// Initialize top row of backtrack matrix
+	if (g_tx <= tlen) {
+		uint32_t diag_idx;
+		if (g_tx <= qlen)
+			diag_idx = (g_tx * (g_tx + 1)) / 2 + g_tx;
+		else if (g_tx <= tlen)
+			diag_idx = (qlen * (qlen + 1)) / 2 + (qlen + 1) * (g_tx - qlen) + g_tx;
+		mat[diag_idx] = DEL;
+	}
 
-  // Initialize top row of backtrack matrix
-  if (g_tx < tlen + 1)
-    mat[g_tx] = DEL;
-
-  // Write 0 to the first cell of our transformed matrix row0.
-  if (g_tx == 0)
-	mat[0] = 0;
+	// Write 0 to the first cell of our transformed matrix row0.
+	if (g_tx == 0)
+		mat[0] = 0;
 }
 
 
@@ -70,6 +77,19 @@ __global__ void xs_core_comp(
 			uint32_t last_gcol = min(qlen, col_offset+max_strides*bdim-1);
 			uint32_t last_lcol = min(max_strides*bdim-1, last_gcol-col_offset);
 
+			// Get output matrix offset for current row.
+			uint32_t mat_idx;
+			if (row_idx <= qlen)
+				mat_idx = (row_idx * (row_idx + 1)) / 2 + col_offset;
+			else if (row_idx <= tlen)
+				mat_idx = (qlen * (qlen + 1)) / 2 + 
+					(qlen + 1) * (row_idx - qlen) + col_offset;
+			else
+				mat_idx = (tlen + 1) * (qlen + 1) - 
+					((tlen + qlen + 1 - row_idx) * 
+					(tlen + qlen + 2 - row_idx)) / 2 +
+					col_offset - (row_idx - tlen);
+
 			// Set Shared Memory values for leftmost column and diagonal
 			if (tidx == 0) {
 				s_row2[0] = col[row_idx];
@@ -91,22 +111,21 @@ __global__ void xs_core_comp(
 					int ins = s_row1[lidx] + mis_or_ind;
 
 					// Write back to our current sliding window row index, set pointer.
-					int mat_idx = row_idx-gidx + gidx*(tlen+1);
 					if (match >= ins && match >= del) {
 						s_row2[lidx+1] = match;
-						mat[mat_idx] = MATCH;
+						mat[mat_idx + col_idx + tidx] = MATCH;
 						if (lidx == last_lcol)
 							col[row_idx] = match;
 					}
 					else if (ins >= match && ins >= del) {
 						s_row2[lidx+1] = ins;
-						mat[mat_idx] = INS;
+						mat[mat_idx + col_idx + tidx] = INS;
 						if (lidx == last_lcol)
 							col[row_idx] = ins;
 					}
 					else {
 						s_row2[lidx+1] = del;
-						mat[mat_idx] = DEL;
+						mat[mat_idx + col_idx + tidx] = DEL;
 						if (lidx == last_lcol)
 							col[row_idx] = del;
 					}
