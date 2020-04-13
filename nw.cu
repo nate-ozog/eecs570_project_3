@@ -22,6 +22,9 @@ int main() {
   // Write similarity matrix to constant CUDA memory.
   cudaMemcpyToSymbol(c_s, s, 16 * sizeof(signed char));
 
+  // Allow 48KB Shared Memory.
+  cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
+
   // Prepare our time recording.
   auto start = std::chrono::high_resolution_clock::now();
   auto finish = std::chrono::high_resolution_clock::now();

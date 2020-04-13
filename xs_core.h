@@ -53,9 +53,9 @@ __global__ void xs_core_comp(
 
 	// Initialize Shared Memory (top two rows of sheared matrix section).
 	if (tidx == 0) {
-		s_row0[0] = col[col_offset-1];		 // on diag, optimize later
-		s_row1[0] = col[col_offset];		 // passed from previous kernel
-		s_row1[1] = col_offset * mis_or_ind; // always on diag
+		s_row0[0] = (col_offset-1) * mis_or_ind;// on diag or from previous kernel
+		s_row1[0] = col[col_offset];		 	// passed from previous kernel
+		s_row1[1] = col_offset * mis_or_ind; 	// always on diag
 	}
 	__syncthreads();
 
@@ -84,7 +84,7 @@ __global__ void xs_core_comp(
 			uint32_t lidx = col_idx + tidx;
 
 			// Do the NW cell calculation.
-			if (gidx > row_offset && gidx <= last_gcol) {
+			if (gidx > row_offset && gidx <= last_gcol && gidx < row_idx) {
 				int match = s_row0[lidx] + cuda_nw_get_sim(q[gidx-1], t[row_idx-gidx-1]);
 				int del = s_row1[lidx+1] + mis_or_ind;
 				int ins = s_row1[lidx] + mis_or_ind;
@@ -159,7 +159,7 @@ uint8_t * xs_t_geq_q_man(
 
   // Maximize SM and Shared Mem utilization
   uint32_t block_size = 1024;
-  uint32_t max_strides = 5;
+  uint32_t max_strides = 3; // 49152 / (1025*4*3) = 3.996
 
   // Loop through every wavefront/diagonal.
   for (uint32_t col_idx = 1; col_idx < qlen+1; col_idx+=max_strides*block_size) {

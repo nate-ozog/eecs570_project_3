@@ -34,7 +34,7 @@ uint8_t * xs_man(
   /* for (int i = 0; i <= qlen; ++i) { */
   /*   for (int j = 0; j <= tlen; ++j) */
   /*     std::cout << std::setfill(' ') << std::setw(5) */
-  /*       << mat[(tlen+1) * i + j] << " "; */
+  /*       << char(mat[(tlen+1) * i + j]+48) << " "; */
   /*   std::cout << std::endl; */
   /* } */
 
