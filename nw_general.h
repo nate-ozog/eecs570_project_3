@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define NUM_TEST_FILES 8
+#define NUM_TEST_FILES 2
 #define GAP_SCORE -1
 #define CEILDIV(A,B) (((A)+(B)-1)/(B))
 
@@ -51,6 +51,21 @@ signed char base_to_val(char B) {
 
 signed char nw_get_sim(signed char * s, char Ai, char Bi) {
   return s[base_to_val(Ai) * 4 + base_to_val(Bi)];
+}
+
+// Converts (i,j) to "z" compressed format index.
+uint32_t ij_to_z(uint32_t i, uint32_t j, uint32_t tlen, uint32_t qlen) {
+	uint32_t z = 0;
+	uint32_t jpi = j + i;
+	if (jpi <= qlen)
+		z = jpi * (jpi + 1) / 2 + j;
+	else if (jpi <= tlen)
+		z = qlen * (qlen + 1) / 2 + (qlen + 1) * (jpi - qlen) + j;
+	else
+		z = (tlen + 1) * (qlen + 1)
+			- (tlen + qlen + 1 - jpi) * (tlen + qlen + 2 - jpi) / 2
+			+ j - (jpi - tlen);
+	return z;
 }
 
 __device__ signed char cuda_base_to_val(char B) {
@@ -224,7 +239,7 @@ void print_ptr_mat(
 				  std::cout << q[i-2] << " ";
 			}
 			else {
-				uint8_t mvmt = mat[(i-1)*(tlen+1) + j-1];
+				uint8_t mvmt = mat[ij_to_z(i-1, j-1, tlen, qlen)];
 				char c;
 				switch (mvmt) {
 					case INS: c = '<'; break;
@@ -254,7 +269,7 @@ void print_ptr_mat(
 				  std::cout << q[i-2] << " ";
 			}
 			else {
-				uint8_t mvmt = mat[(i-1)*(tlen+1) + j-1];
+				uint8_t mvmt = mat[ij_to_z(i-1, j-1, tlen, qlen)];
 				char c;
 				switch (mvmt) {
 					case INS: c = '^'; break;
@@ -285,7 +300,7 @@ void nw_ptr_backtrack(
   uint32_t j = tlen;
   uint32_t i = qlen;
   while (i > 0 || j > 0) {
-	  switch(mat[i*(tlen+1)+j]) {
+	  switch(mat[ij_to_z(i, j, tlen, qlen)]) {
 		  case MATCH:
 			  q_algn = q[i-1] + q_algn;
 			  t_algn = t[j-1] + t_algn;
@@ -303,7 +318,7 @@ void nw_ptr_backtrack(
 			  break;
 		  default:
 			std::cout << "ERROR, unexpected back-pointer value: ";
-			std::cout << mat[i*(tlen+1)+j] << std::endl;
+			std::cout << mat[ij_to_z(i, j, tlen, qlen)] << std::endl;
 			std::cout << "i: " << i << "\tj: " << j << std::endl;
 			std::cout << "tlen: " << tlen << "\tqlen: " << qlen << std::endl;
 			exit(-1);
