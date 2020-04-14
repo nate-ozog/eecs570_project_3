@@ -14,19 +14,19 @@ __global__ void xs_core_init(
 	uint32_t g_tx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	// Initialize left column of backtrack matrix
-	if (g_tx <= qlen) {
-		uint32_t left_col_idx = (g_tx * (g_tx + 1)) / 2;
-		mat[left_col_idx] = INS;
+	if (g_tx <= tlen) {
+		uint32_t left_col_idx;
+		if (g_tx <= qlen)
+			left_col_idx = g_tx * (g_tx+1) / 2;
+		else
+			left_col_idx = qlen * (qlen+1) / 2 + (g_tx-qlen) * (qlen+1);
+		mat[left_col_idx] = DEL;
 	}
 
 	// Initialize top row of backtrack matrix
-	if (g_tx <= tlen) {
-		uint32_t diag_idx;
-		if (g_tx <= qlen)
-			diag_idx = (g_tx * (g_tx + 1)) / 2 + g_tx;
-		else if (g_tx <= tlen)
-			diag_idx = (qlen * (qlen + 1)) / 2 + (qlen + 1) * (g_tx - qlen) + g_tx;
-		mat[diag_idx] = DEL;
+	if (g_tx <= qlen) {
+		uint32_t diag_idx = g_tx * (g_tx + 1) / 2 + g_tx;
+		mat[diag_idx] = INS;
 	}
 
 	// Write 0 to the first cell of our transformed matrix row0.
@@ -88,7 +88,7 @@ __global__ void xs_core_comp(
 				mat_idx = (tlen + 1) * (qlen + 1) - 
 					((tlen + qlen + 1 - row_idx) * 
 					(tlen + qlen + 2 - row_idx)) / 2 +
-					col_offset - (row_idx - tlen);
+					col_offset - row_offset - 1;
 
 			// Set Shared Memory values for leftmost column and diagonal
 			if (tidx == 0) {

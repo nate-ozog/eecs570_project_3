@@ -64,10 +64,10 @@ int main() {
     runtime += std::chrono::duration_cast<std::chrono::microseconds>(finish - start);
 
     // Debug print pointer matrix.
-    print_ptr_mat(nw_ptr_mat, t, q, tlen, qlen, swap_t_q);
+    /* print_ptr_mat(nw_ptr_mat, t, q, tlen, qlen, swap_t_q); */
 
     // Backtrack through pointer matrix.
-    /* nw_ptr_backtrack(nw_ptr_mat, t, q, tlen, qlen, swap_t_q); */
+    nw_ptr_backtrack(nw_ptr_mat, t, q, tlen, qlen, swap_t_q);
 
     // Clean up memory.
 	cuda_error_check( cudaFreeHost(nw_ptr_mat) );

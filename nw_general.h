@@ -12,7 +12,7 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
-#define NUM_TEST_FILES 2
+#define NUM_TEST_FILES 8
 #define GAP_SCORE -1
 #define CEILDIV(A,B) (((A)+(B)-1)/(B))
 
@@ -58,13 +58,13 @@ uint32_t ij_to_z(uint32_t i, uint32_t j, uint32_t tlen, uint32_t qlen) {
 	uint32_t z = 0;
 	uint32_t jpi = j + i;
 	if (jpi <= qlen)
-		z = jpi * (jpi + 1) / 2 + j;
+		z = jpi * (jpi + 1) / 2 + i;
 	else if (jpi <= tlen)
-		z = qlen * (qlen + 1) / 2 + (qlen + 1) * (jpi - qlen) + j;
+		z = qlen * (qlen + 1) / 2 + (qlen + 1) * (jpi - qlen) + i;
 	else
 		z = (tlen + 1) * (qlen + 1)
 			- (tlen + qlen + 1 - jpi) * (tlen + qlen + 2 - jpi) / 2
-			+ j - (jpi - tlen);
+			+ i - (jpi - tlen);
 	return z;
 }
 
