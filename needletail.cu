@@ -5,10 +5,8 @@
 #include <pthread.h>
 
 TestBatch test_batch("batch.txt");
-pthread_mutex_t device_pool_lock;
-PoolMan         device_pool(DEVICE_POOL_ALIGN_POW);
-pthread_mutex_t host_pool_lock;
-PoolMan         host_pool  (HOST_POOL_ALIGN_POW);
+PoolMan   device_pool(DEVICE_POOL_ALIGN_POW);
+PoolMan   host_pool  (HOST_POOL_ALIGN_POW);
 
 // Reads in the similarity matrix file into GPU constant memory.
 signed char * init_similarity_matrix() {
@@ -72,10 +70,6 @@ int main() {
     cuda_error_check( cudaHostAlloc( &host_pool_ptrs[i], HOST_POOL_ALLOC_BYTES, cudaHostAllocDefault ) );
     host_pool.add_pool( host_pool_ptrs[i], HOST_POOL_ALLOC_BYTES );
   }
-
-  // Initialize the pool mutexes
-  pthread_mutex_init( &device_pool_lock, NULL );
-  pthread_mutex_init(   &host_pool_lock, NULL );
 
   auto start = std::chrono::high_resolution_clock::now();
 

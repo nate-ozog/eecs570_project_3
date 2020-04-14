@@ -2,12 +2,24 @@
 
 using namespace std;
 
-PoolMan::PoolMan( uint32_t align_pow ) {
-  align_pow_   = align_pow;
-  free_bytes_  = 0;
-  total_bytes_ = 0;
-  peak_bytes_  = 0;
+
+PoolMan::PoolMan() {
+  init_();
 }
+
+
+PoolMan::PoolMan( uint32_t align_pow ) {
+  init_();
+  align_pow_ = align_pow;
+}
+
+
+PoolMan::~PoolMan() {
+  pthread_mutex_destroy( &malloc_lock );
+  pthread_mutex_destroy( &frees_lock );
+  pthread_cond_destroy( &frees_exist );
+}
+
 
 void PoolMan::add_pool( void *pool, uint64_t size ) {
   uintptr_t temp;
@@ -32,7 +44,13 @@ void PoolMan::add_pool( void *pool, uint64_t size ) {
   free_addr_[base]  = size;
   free_bytes_      += size;
   total_bytes_     += size;
+
+  // Since allocations must be contiguous, the largest
+  // possible size is the size of the largest pool
+  if ( size > max_possible_alloc )
+    max_possible_alloc = size;
 }
+
 
 void *PoolMan::malloc( uint64_t size ) {
   void *result = NULL;
@@ -51,51 +69,104 @@ void *PoolMan::malloc( uint64_t size ) {
     size += ( 1 << align_pow_ ) - temp;
   }
 
-  // Find the best fit
-  it = free_size_.lower_bound( size );
-
-  // If a segment was found
-  if ( it != free_size_.end() ) {
-
-    // Get the allocation starting address and record the allocation
-    result = (void*) it->second;
-    allocs_[result] = size;
-    free_bytes_ -= size;
-
-    // Remove this segment from the maps
-    segment_size = it->first;
-    segment_addr = it->second;
-    free_addr_.erase( segment_addr );
-    free_size_.erase( it );
-
-    // If the segment isn't empty, add the remaining space to the maps
-    if ( segment_size > size ) {
-      free_size_.insert( pair<uint64_t,uintptr_t>( segment_size - size, segment_addr + size ) );
-      free_addr_[ segment_addr + size ] = segment_size - size;
-    }
+  // If the request is too large to ever allocate,
+  // output an error and exit
+  if ( size > max_possible_alloc ) {
+    cerr << "PoolMan::malloc called with size > max_possible_alloc\n";
+    cerr << " Requested Size B: " << size << "\n";
+    cerr << "   Max Possible B: " << max_possible_alloc << endl;
+    exit(-2);
   }
+
+  // Hold the malloc lock while accessing the class data structures
+  // Keep holding even if we have to wait for memory to be freed
+  pthread_mutex_lock( &malloc_lock );
+
+  // Finish any pending frees
+  finish_frees();
+
+  do {
+    // Find the best fit
+    it = free_size_.lower_bound( size );
+
+    // If a segment was found
+    if ( it != free_size_.end() ) {
+
+      // Get the allocation starting address and record the allocation
+      result = (void*) it->second;
+      allocs_[result] = size;
+      free_bytes_ -= size;
+
+      // Remove this segment from the maps
+      segment_size = it->first;
+      segment_addr = it->second;
+      free_addr_.erase( segment_addr );
+      free_size_.erase( it );
+
+      // If the segment isn't empty, add the remaining space to the maps
+      if ( segment_size > size ) {
+        free_size_.insert( pair<uint64_t,uintptr_t>( segment_size - size, segment_addr + size ) );
+        free_addr_[ segment_addr + size ] = segment_size - size;
+      }
+    }
+    else {
+      pthread_mutex_lock( &frees_lock );
+
+      // Wait until free is called, then update the free maps and try allocating again
+      while ( frees.empty() ) {
+        pthread_cond_wait( &frees_exist, &frees_lock );
+      }
+      finish_frees_();
+
+      pthread_mutex_unlock( &frees_lock );
+    }
+
+  } while ( result == NULL );
 
   // Update the peak counter, if necessary
   if ( total_bytes_ - free_bytes_ > peak_bytes_ )
     peak_bytes_ = total_bytes_ - free_bytes_;
 
-  // Dump some stats and exit if returning NULL
-  // TODO: Have the caller wait for space instead of this
-  if ( result == NULL ) {
-    cerr << "PoolMan::malloc returning NULL\n";
-    cerr << " Requested Size B: " << size << "\n";
-    cerr << "           Free B: " << free_bytes_ << "\n";
-    cerr << "          Total B: " << total_bytes_ << "\n";
-    cerr << "Max Avail. Seg. B: " << get_max_malloc_bytes() << "\n";
-    cerr << "      Alloc Count: " << get_alloc_count() << "\n";
-    cerr << "       Free Count: " << get_free_count()  << "\n";
-    exit(-2);
-  }
+  // Done accessing shared data, release the lock
+  pthread_mutex_unlock( &malloc_lock );
 
   return result;
 }
 
+
 void PoolMan::free( void *ptr ) {
+  pthread_mutex_lock( &frees_lock );
+
+  // Record this free and signal any thread waiting to malloc
+  frees.push_back( ptr );
+  pthread_cond_signal( &frees_exist );
+
+  pthread_mutex_unlock( &frees_lock );
+}
+
+
+void PoolMan::finish_frees() {
+  pthread_mutex_lock( &frees_lock );
+  finish_frees_();
+  pthread_mutex_unlock( &frees_lock );
+}
+
+
+void PoolMan::init_() {
+  align_pow_         = 0;
+  free_bytes_        = 0;
+  total_bytes_       = 0;
+  peak_bytes_        = 0;
+  max_possible_alloc = 0;
+
+  pthread_mutex_init( &malloc_lock, NULL );
+  pthread_mutex_init( &frees_lock, NULL );
+  pthread_cond_init( &frees_exist, NULL );
+}
+
+
+// Assumes that malloc_lock has already been acquired
+void PoolMan::free_( void *ptr ) {
   uint64_t  size;
   uintptr_t addr;
   bool      merged = false;
@@ -159,11 +230,26 @@ void PoolMan::free( void *ptr ) {
   free_size_.insert( pair<uint64_t,uintptr_t>( size, addr ) );
 }
 
+
+// Assumes that the frees lock has already been acquired
+void PoolMan::finish_frees_() {
+  // For each pointer, update the free maps
+  for ( int i = 0; i < frees.size(); i++ )
+    free_( frees[i] );
+
+  // Clear the list of deferred frees
+  frees.clear();
+}
+
+
 uint64_t PoolMan::get_free_bytes()  { return free_bytes_;       }
+
 
 uint64_t PoolMan::get_total_bytes() { return total_bytes_;      }
 
+
 uint32_t PoolMan::get_free_count()  { return free_size_.size(); }
+
 
 uint64_t PoolMan::get_max_malloc_bytes() {
   if ( !free_size_.empty() )
@@ -172,9 +258,12 @@ uint64_t PoolMan::get_max_malloc_bytes() {
     return 0;
 }
 
+
 uint32_t PoolMan::get_alloc_count() { return allocs_.size();    }
 
+
 uint64_t PoolMan::get_peak_bytes()  { return peak_bytes_;       }
+
 
 void PoolMan::print_pool() {
 

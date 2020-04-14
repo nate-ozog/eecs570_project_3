@@ -50,14 +50,8 @@ std::pair<char *, char *> needletail_stream_single (
   host_mem_bytes    = (tlen + 1) * (qlen + 1) * sizeof(uint8_t);
 
   // Allocate memory
-  pthread_mutex_lock( &device_pool_lock );
   device_mem_ptr = device_pool.malloc( device_mem_bytes );
-  //device_pool.print_pool();
-  pthread_mutex_unlock( &device_pool_lock );
-
-  pthread_mutex_lock( &host_pool_lock );
-  host_mem_ptr = (uint8_t*) host_pool.malloc( host_mem_bytes );
-  pthread_mutex_unlock( &host_pool_lock );
+  host_mem_ptr   = (uint8_t*) host_pool.malloc( host_mem_bytes );
 
   //cudaMalloc( &device_mem_ptr, device_mem_bytes );
   //cudaHostAlloc( &host_mem_ptr, host_mem_bytes, cudaHostAllocDefault );
@@ -85,11 +79,7 @@ std::pair<char *, char *> needletail_stream_single (
 
   // Synchronize with stream and start cleanup
   cudaStreamSynchronize( stream );
-
-  pthread_mutex_lock( &device_pool_lock );
   device_pool.free( device_mem_ptr );
-  pthread_mutex_unlock( &device_pool_lock );
-
   //cudaFree( device_mem_ptr );
   cudaStreamDestroy( stream );
 
@@ -97,11 +87,7 @@ std::pair<char *, char *> needletail_stream_single (
   algn = nw_ptr_backtrack( host_mem_ptr, swap_t_q, t, q, tlen, qlen );
 
   // Free the host memory
-
-  pthread_mutex_lock( &host_pool_lock );
   host_pool.free( host_mem_ptr );
-  pthread_mutex_unlock( &host_pool_lock );
-
   //cudaFreeHost( host_mem_ptr );
 
   // Return the aligned strings
