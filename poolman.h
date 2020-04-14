@@ -6,7 +6,6 @@
 #include <iostream>
 #include <stdint.h>
 #include <pthread.h>
-#include <semaphore.h>
 
 class PoolMan
 {
