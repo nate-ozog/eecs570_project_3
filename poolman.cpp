@@ -83,7 +83,6 @@ void *PoolMan::malloc( uint64_t size ) {
 
   // Finish any pending frees
   finish_frees();
-<<<<<<< HEAD
 
   do {
     // Find the best fit
@@ -103,27 +102,6 @@ void *PoolMan::malloc( uint64_t size ) {
       free_addr_.erase( segment_addr );
       free_size_.erase( it );
 
-=======
-
-  do {
-    // Find the best fit
-    it = free_size_.lower_bound( size );
-
-    // If a segment was found
-    if ( it != free_size_.end() ) {
-
-      // Get the allocation starting address and record the allocation
-      result = (void*) it->second;
-      allocs_[result] = size;
-      free_bytes_ -= size;
-
-      // Remove this segment from the maps
-      segment_size = it->first;
-      segment_addr = it->second;
-      free_addr_.erase( segment_addr );
-      free_size_.erase( it );
-
->>>>>>> origin/master
       // If the segment isn't empty, add the remaining space to the maps
       if ( segment_size > size ) {
         free_size_.insert( pair<uint64_t,uintptr_t>( segment_size - size, segment_addr + size ) );
