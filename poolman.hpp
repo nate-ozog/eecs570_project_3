@@ -1,5 +1,6 @@
-#ifndef _POOLMAN_H_
-#define _POOLMAN_H_
+#ifndef POOLMAN_HPP
+#define POOLMAN_HPP
+
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -33,7 +34,7 @@ public:
 private:
   void init_();                     // Performs initialization activities common to all constructors
   void free_( void *ptr );          // Updates the free maps to actually free the given pointer
-  void finish_frees_();             
+  void finish_frees_();
 
   uint32_t align_pow_;              // 2^(align_pow_) is the minimum alignment for mallocs
   uint64_t max_possible_alloc;      // Largest allocation this pool can provide

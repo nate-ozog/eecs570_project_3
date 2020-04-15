@@ -1,5 +1,5 @@
-#ifndef _TESTBATCH_H_
-#define _TESTBATCH_H_
+#ifndef TESTBATCH_HPP
+#define TESTBATCH_HPP
 
 #include <vector>
 #include <string>

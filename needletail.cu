@@ -1,12 +1,12 @@
-#include "nw_general.h"
+#include "needletail_general.hpp"
 #include "needletail_threads.cuh"
 #include "testbatch.hpp"
-#include "pools.h"
+#include "pools.hpp"
 #include <pthread.h>
 
-TestBatch test_batch("batch.txt");
-PoolMan   device_pool(DEVICE_POOL_ALIGN_POW);
-PoolMan   host_pool  (HOST_POOL_ALIGN_POW);
+TestBatch test_batch  ("batch.txt");
+PoolMan   device_pool (DEVICE_POOL_ALIGN_POW);
+PoolMan   host_pool   (HOST_POOL_ALIGN_POW);
 
 // Reads in the similarity matrix file into GPU constant memory.
 signed char * init_similarity_matrix() {
@@ -27,7 +27,7 @@ signed char * init_similarity_matrix() {
 void * worker(void * arg) {
   Test_t test;
   bool swap_t_q;
-  std::pair<char *, char *> algn;
+  std::tuple<char *, char *, int> results;
   std::chrono::high_resolution_clock::time_point start, end;
 
   while ( test_batch.next_test( test ) ) {
@@ -38,13 +38,13 @@ void * worker(void * arg) {
     }
 
     start = std::chrono::high_resolution_clock::now();
-    algn = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
+    results = needletail_stream_single( test.s1, test.s2, test.s1_len, test.s2_len, GAP_SCORE, swap_t_q );
     end = std::chrono::high_resolution_clock::now();
 
-    test_batch.log_result( test.id, algn.first, algn.second, 0,
+    test_batch.log_result( test.id, std::get<0>(results), std::get<1>(results), std::get<2>(results),
                            std::chrono::duration_cast<std::chrono::microseconds>( end - start ).count() );
-    delete [] algn.first;
-    delete [] algn.second;
+    delete [] std::get<0>(results);
+    delete [] std::get<1>(results);
   }
   return NULL;
 }
