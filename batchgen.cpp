@@ -166,11 +166,19 @@ int main( int argc, char* argv[] ) {
   *out << "\nseed=" << ag.get_seed();
   *out << "\n'\n"   << endl;
 
+  size_t count = 1;
+  ofstream out_Q, out_T;
+  out_Q.open(filename + "_Q");
+  out_T.open(filename + "_T");
+
   // Generate and output the batch
   for ( int t = 0; t < target_count; t++ ) {
 
+    std::string str_target, str_query;
+
     // Generate a new target
     target = ag.gen_target( target_len_lower, target_len_upper, target_gc_content );
+    str_target = target;
 
     // Write the target index and length as a label
     *out << "'" << "t" << t << ",l" << target.length() << "_'\n";
@@ -184,7 +192,11 @@ int main( int argc, char* argv[] ) {
         *out << "<>{";
       else
         *out << "  {";
-      *out << ag.gen_read( query_len_lower, query_len_upper, query_swap_prob ) << "}\n";
+      str_query = ag.gen_read( query_len_lower, query_len_upper, query_swap_prob );
+      *out << str_query << "}\n";
+      out_Q << ">" << count << '\n' << str_query << '\n';
+      out_T << ">" << count << '\n' << str_target << '\n';
+      ++count;
     }
     *out << endl;
   }
